@@ -3,7 +3,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { MapPin, Receipt, Target, TrendingUp, Clock, CheckCircle2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { MapPin, Receipt, Target, Clock, CheckCircle2, XCircle, Package } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const COLORS = ['hsl(213, 56%, 24%)', 'hsl(152, 55%, 42%)', 'hsl(38, 92%, 50%)', 'hsl(0, 72%, 51%)'];
@@ -14,7 +15,7 @@ const Dashboard: React.FC = () => {
   const { data: visits = [] } = useQuery({
     queryKey: ['visits', user?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('visits').select('*').order('checked_in_at', { ascending: false }).limit(50);
+      const { data } = await supabase.from('visits').select('*').order('created_at', { ascending: false }).limit(100);
       return data || [];
     },
     enabled: !!user,
@@ -38,12 +39,25 @@ const Dashboard: React.FC = () => {
     enabled: !!user,
   });
 
-  const totalVisits = visits.length;
-  const todayVisits = visits.filter(v => new Date(v.checked_in_at).toDateString() === new Date().toDateString()).length;
+  // Only count verified visits for analytics
+  const verifiedVisits = visits.filter(v => v.visit_status === 'verified');
+  const failedVisits = visits.filter(v => v.visit_status === 'failed');
+  const pendingVisits = visits.filter(v => v.visit_status === 'assigned');
+  const ordersReceived = verifiedVisits.filter(v => v.order_received).length;
   const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
-  const pendingExpenses = expenses.filter(e => e.approval_status === 'pending').length;
   const currentTarget = targets[0];
   const achievementPct = currentTarget ? Math.round((Number(currentTarget.achieved_value) / Number(currentTarget.target_value)) * 100) : 0;
+
+  const todayVerified = verifiedVisits.filter(v =>
+    new Date(v.checked_in_at).toDateString() === new Date().toDateString()
+  ).length;
+
+  const stats = [
+    { label: 'Verified Visits', value: verifiedVisits.length, icon: CheckCircle2, color: 'text-success' },
+    { label: 'Today', value: todayVerified, icon: Clock, color: 'text-accent' },
+    { label: 'Orders', value: ordersReceived, icon: Package, color: 'text-primary' },
+    { label: 'Pending', value: pendingVisits.length, icon: MapPin, color: 'text-warning' },
+  ];
 
   const weeklyData = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -51,7 +65,8 @@ const Dashboard: React.FC = () => {
     const dayStr = d.toDateString();
     return {
       day: d.toLocaleDateString('en', { weekday: 'short' }),
-      visits: visits.filter(v => new Date(v.checked_in_at).toDateString() === dayStr).length,
+      verified: verifiedVisits.filter(v => new Date(v.checked_in_at).toDateString() === dayStr).length,
+      failed: failedVisits.filter(v => new Date(v.checked_in_at).toDateString() === dayStr).length,
     };
   });
 
@@ -61,13 +76,6 @@ const Dashboard: React.FC = () => {
       return acc;
     }, {} as Record<string, number>)
   ).map(([name, value]) => ({ name, value }));
-
-  const stats = [
-    { label: 'Total Visits', value: totalVisits, icon: MapPin, color: 'text-primary' },
-    { label: 'Today', value: todayVisits, icon: Clock, color: 'text-accent' },
-    { label: 'Expenses', value: `₹${totalExpenses.toLocaleString()}`, icon: Receipt, color: 'text-warning' },
-    { label: 'Achievement', value: `${achievementPct}%`, icon: Target, color: 'text-success' },
-  ];
 
   return (
     <div className="space-y-6">
@@ -95,7 +103,7 @@ const Dashboard: React.FC = () => {
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-semibold">Weekly Visits</CardTitle>
+            <CardTitle className="text-base font-semibold">Weekly Visit Results</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={240}>
@@ -104,7 +112,8 @@ const Dashboard: React.FC = () => {
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))' }} />
-                <Bar dataKey="visits" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="verified" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Verified" />
+                <Bar dataKey="failed" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} name="Failed" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -133,30 +142,30 @@ const Dashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* Recent visits */}
+      {/* Recent verified visits */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Recent Visits</CardTitle>
+          <CardTitle className="text-base font-semibold">Recent Verified Visits</CardTitle>
         </CardHeader>
         <CardContent>
-          {visits.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No visits recorded yet. Tap "Check In" to start!</p>
+          {verifiedVisits.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">No verified visits yet.</p>
           ) : (
             <div className="space-y-3">
-              {visits.slice(0, 5).map(v => (
+              {verifiedVisits.slice(0, 5).map(v => (
                 <div key={v.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                   <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{v.customer_name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm">{v.customer_name}</p>
+                      {v.order_received && (
+                        <Badge variant="outline" className="bg-success/10 text-success text-xs">Order ✓</Badge>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(v.checked_in_at).toLocaleDateString()} · {v.notes || 'No notes'}
+                      {new Date(v.checked_in_at).toLocaleDateString()} · {v.location_name || v.notes || 'No notes'}
                     </p>
                   </div>
-                  {v.latitude && (
-                    <span className="text-xs text-muted-foreground">
-                      {v.latitude.toFixed(2)}, {v.longitude?.toFixed(2)}
-                    </span>
-                  )}
                 </div>
               ))}
             </div>

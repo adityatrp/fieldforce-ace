@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Receipt, Plus, AlertTriangle, CheckCircle2, Clock, XCircle } from 'lucide-react';
 
 const CATEGORIES = ['Food', 'Travel', 'Accommodation', 'Communication', 'Office Supplies', 'Other'];
-const FOOD_LIMIT = 500; // configurable
+const FOOD_LIMIT = 500;
 
 const statusConfig: Record<string, { icon: React.ElementType; className: string }> = {
   pending: { icon: Clock, className: 'bg-warning/10 text-warning border-warning/20' },
@@ -60,10 +60,9 @@ const ExpensesPage: React.FC = () => {
       let approvalStatus = 'pending';
       let validationResult = '';
 
-      // Expense validation logic
       if (category === 'Food' && amt > FOOD_LIMIT) {
         approvalStatus = 'flagged';
-        validationResult = `Food expense ₹${amt} exceeds limit of ₹${FOOD_LIMIT}. Flagged for admin review.`;
+        validationResult = `Food expense ₹${amt} exceeds limit of ₹${FOOD_LIMIT}. Flagged for review.`;
       }
 
       const { error } = await supabase.from('expenses').insert({
@@ -83,7 +82,7 @@ const ExpensesPage: React.FC = () => {
       if (result.approvalStatus === 'flagged') {
         toast({ title: '⚠️ Expense Flagged', description: result.validationResult });
       } else {
-        toast({ title: 'Expense submitted', description: 'Your expense report has been submitted.' });
+        toast({ title: 'Expense submitted' });
       }
       setOpen(false);
       setCategory('');
@@ -105,60 +104,66 @@ const ExpensesPage: React.FC = () => {
     },
   });
 
+  const canApprove = role === 'admin' || role === 'team_lead';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-header">Expenses</h1>
-          <p className="text-muted-foreground mt-1">Submit and track expense reports</p>
+          <p className="text-muted-foreground mt-1">
+            {canApprove ? 'Review and approve expense reports' : 'Submit and track expense reports'}
+          </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button size="lg" className="h-12 px-6 text-base gap-2">
-              <Plus className="h-5 w-5" /> New Expense
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Submit Expense</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 mt-2">
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Amount (₹)</Label>
-                <Input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" min="0" step="0.01" />
-                {category === 'Food' && parseFloat(amount) > FOOD_LIMIT && (
-                  <p className="text-xs text-warning flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" /> Exceeds ₹{FOOD_LIMIT} limit — will be flagged for review
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>Receipt Photo</Label>
-                <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setReceipt(e.target.files?.[0] || null)} />
-                <Button type="button" variant="outline" className="w-full gap-2" onClick={() => fileRef.current?.click()}>
-                  <Receipt className="h-4 w-4" />
-                  {receipt ? receipt.name : 'Upload Receipt'}
+        {role === 'salesperson' && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button size="lg" className="h-12 px-6 text-base gap-2">
+                <Plus className="h-5 w-5" /> New Expense
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Submit Expense</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 mt-2">
+                <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Amount (₹)</Label>
+                  <Input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" min="0" step="0.01" />
+                  {category === 'Food' && parseFloat(amount) > FOOD_LIMIT && (
+                    <p className="text-xs text-warning flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Exceeds ₹{FOOD_LIMIT} — will be flagged
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Receipt Photo</Label>
+                  <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setReceipt(e.target.files?.[0] || null)} />
+                  <Button type="button" variant="outline" className="w-full gap-2" onClick={() => fileRef.current?.click()}>
+                    <Receipt className="h-4 w-4" />
+                    {receipt ? receipt.name : 'Upload Receipt'}
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes</Label>
+                  <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Description..." rows={2} />
+                </div>
+                <Button className="w-full h-12 text-base" disabled={!category || !amount || createExpense.isPending} onClick={() => createExpense.mutate()}>
+                  {createExpense.isPending ? 'Submitting...' : 'Submit Expense'}
                 </Button>
               </div>
-              <div className="space-y-2">
-                <Label>Notes</Label>
-                <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Description..." rows={2} />
-              </div>
-              <Button className="w-full h-12 text-base" disabled={!category || !amount || createExpense.isPending} onClick={() => createExpense.mutate()}>
-                {createExpense.isPending ? 'Submitting...' : 'Submit Expense'}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {isLoading ? (
@@ -167,7 +172,7 @@ const ExpensesPage: React.FC = () => {
         <Card>
           <CardContent className="py-12 text-center">
             <Receipt className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-            <p className="text-muted-foreground">No expenses submitted yet.</p>
+            <p className="text-muted-foreground">No expenses yet.</p>
           </CardContent>
         </Card>
       ) : (
@@ -184,15 +189,13 @@ const ExpensesPage: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-sm">{e.category}</p>
-                      <Badge variant="outline" className={config.className}>
-                        {e.approval_status}
-                      </Badge>
+                      <Badge variant="outline" className={config.className}>{e.approval_status}</Badge>
                     </div>
                     <p className="text-lg font-bold">₹{Number(e.amount).toLocaleString()}</p>
                     {e.validation_result && <p className="text-xs text-warning mt-1">{e.validation_result}</p>}
                     <p className="text-xs text-muted-foreground">{new Date(e.created_at).toLocaleDateString()}</p>
                   </div>
-                  {role === 'admin' && (e.approval_status === 'pending' || e.approval_status === 'flagged') && (
+                  {canApprove && (e.approval_status === 'pending' || e.approval_status === 'flagged') && (
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" className="text-success" onClick={() => updateStatus.mutate({ id: e.id, status: 'approved' })}>Approve</Button>
                       <Button size="sm" variant="outline" className="text-destructive" onClick={() => updateStatus.mutate({ id: e.id, status: 'rejected' })}>Reject</Button>

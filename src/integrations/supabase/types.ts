@@ -139,43 +139,67 @@ export type Database = {
       }
       visits: {
         Row: {
+          assigned_by: string | null
+          assigned_to: string | null
           checked_in_at: string
           checked_out_at: string | null
           created_at: string
           customer_name: string
           id: string
           latitude: number | null
+          location_name: string | null
           longitude: number | null
           notes: string | null
+          order_notes: string | null
+          order_received: boolean | null
           photo_url: string | null
+          target_latitude: number | null
+          target_longitude: number | null
           updated_at: string
           user_id: string
+          visit_status: string
         }
         Insert: {
+          assigned_by?: string | null
+          assigned_to?: string | null
           checked_in_at?: string
           checked_out_at?: string | null
           created_at?: string
           customer_name: string
           id?: string
           latitude?: number | null
+          location_name?: string | null
           longitude?: number | null
           notes?: string | null
+          order_notes?: string | null
+          order_received?: boolean | null
           photo_url?: string | null
+          target_latitude?: number | null
+          target_longitude?: number | null
           updated_at?: string
           user_id: string
+          visit_status?: string
         }
         Update: {
+          assigned_by?: string | null
+          assigned_to?: string | null
           checked_in_at?: string
           checked_out_at?: string | null
           created_at?: string
           customer_name?: string
           id?: string
           latitude?: number | null
+          location_name?: string | null
           longitude?: number | null
           notes?: string | null
+          order_notes?: string | null
+          order_received?: boolean | null
           photo_url?: string | null
+          target_latitude?: number | null
+          target_longitude?: number | null
           updated_at?: string
           user_id?: string
+          visit_status?: string
         }
         Relationships: []
       }
