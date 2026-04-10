@@ -3,33 +3,29 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trophy, Medal, TrendingUp, MapPin, Clock } from 'lucide-react';
 
 const LeaderboardPage: React.FC = () => {
-  const { user, role } = useAuth();
+  const { user } = useAuth();
 
-  // For admins/leads, fetch all profiles + their visits count
   const { data: leaderboard = [], isLoading } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: async () => {
-      // Fetch profiles (admins/leads see all, salesperson sees own)
-      const { data: profiles } = await supabase.from('profiles').select('*');
-      const { data: visits } = await supabase.from('visits').select('*');
-      const { data: targets } = await supabase.from('targets').select('*');
+      const [{ data: profiles }, { data: visits }, { data: targets }] = await Promise.all([
+        supabase.from('profiles').select('*'),
+        supabase.from('visits').select('*'),
+        supabase.from('targets').select('*'),
+      ]);
 
       if (!profiles) return [];
 
       return profiles.map(p => {
-        const userVisits = (visits || []).filter(v => v.user_id === p.user_id);
+        // Only count verified visits
+        const userVisits = (visits || []).filter(v => v.assigned_to === p.user_id && v.visit_status === 'verified');
         const userTarget = (targets || []).find(t => t.user_id === p.user_id);
-        const thisWeek = userVisits.filter(v => {
-          const d = new Date(v.checked_in_at);
-          const now = new Date();
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          return d >= weekAgo;
-        });
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const thisWeek = userVisits.filter(v => new Date(v.checked_in_at) >= weekAgo);
+        const orders = userVisits.filter(v => v.order_received).length;
 
-        // Calculate work hours from check-in/out pairs
         const workedMs = userVisits.reduce((sum, v) => {
           if (v.checked_out_at) {
             return sum + (new Date(v.checked_out_at).getTime() - new Date(v.checked_in_at).getTime());
@@ -47,10 +43,11 @@ const LeaderboardPage: React.FC = () => {
           team: p.team_name || '',
           totalVisits: userVisits.length,
           weeklyVisits: thisWeek.length,
+          orders,
           workHours: Math.round(workedMs / (1000 * 60 * 60) * 10) / 10,
           achievementPct,
         };
-      }).sort((a, b) => b.achievementPct - a.achievementPct || b.weeklyVisits - a.weeklyVisits);
+      }).sort((a, b) => b.totalVisits - a.totalVisits || b.orders - a.orders);
     },
     enabled: !!user,
   });
@@ -61,10 +58,9 @@ const LeaderboardPage: React.FC = () => {
     <div className="space-y-6">
       <div>
         <h1 className="page-header">Leaderboard</h1>
-        <p className="text-muted-foreground mt-1">Top performers this week</p>
+        <p className="text-muted-foreground mt-1">Top performers by verified visits</p>
       </div>
 
-      {/* Top 3 podium */}
       {leaderboard.length >= 1 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {leaderboard.slice(0, 3).map((entry, i) => (
@@ -75,15 +71,14 @@ const LeaderboardPage: React.FC = () => {
                   <span className="text-lg font-bold text-primary">{entry.name[0]}</span>
                 </div>
                 <p className="font-bold">{entry.name}</p>
-                {entry.team && <p className="text-xs text-muted-foreground">{entry.team}</p>}
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   <div>
-                    <p className="text-lg font-bold text-primary">{entry.achievementPct}%</p>
-                    <p className="text-[10px] text-muted-foreground">Target</p>
+                    <p className="text-lg font-bold text-success">{entry.totalVisits}</p>
+                    <p className="text-[10px] text-muted-foreground">Verified</p>
                   </div>
                   <div>
-                    <p className="text-lg font-bold">{entry.weeklyVisits}</p>
-                    <p className="text-[10px] text-muted-foreground">Visits</p>
+                    <p className="text-lg font-bold">{entry.orders}</p>
+                    <p className="text-[10px] text-muted-foreground">Orders</p>
                   </div>
                   <div>
                     <p className="text-lg font-bold">{entry.workHours}h</p>
@@ -96,7 +91,6 @@ const LeaderboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Full ranking table */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold">Full Rankings</CardTitle>
@@ -113,10 +107,10 @@ const LeaderboardPage: React.FC = () => {
                   <tr className="border-b text-muted-foreground">
                     <th className="text-left py-3 px-2">#</th>
                     <th className="text-left py-3 px-2">Name</th>
-                    <th className="text-right py-3 px-2">Achievement</th>
-                    <th className="text-right py-3 px-2">Visits (Week)</th>
-                    <th className="text-right py-3 px-2">Total Visits</th>
-                    <th className="text-right py-3 px-2">Work Hours</th>
+                    <th className="text-right py-3 px-2">Verified</th>
+                    <th className="text-right py-3 px-2">Orders</th>
+                    <th className="text-right py-3 px-2">This Week</th>
+                    <th className="text-right py-3 px-2">Hours</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -128,19 +122,12 @@ const LeaderboardPage: React.FC = () => {
                           <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
                             {entry.name[0]}
                           </div>
-                          <div>
-                            <p className="font-medium">{entry.name}</p>
-                            {entry.team && <p className="text-xs text-muted-foreground">{entry.team}</p>}
-                          </div>
+                          <p className="font-medium">{entry.name}</p>
                         </div>
                       </td>
-                      <td className="py-3 px-2 text-right">
-                        <span className={`font-semibold ${entry.achievementPct >= 100 ? 'text-success' : entry.achievementPct >= 50 ? 'text-primary' : 'text-warning'}`}>
-                          {entry.achievementPct}%
-                        </span>
-                      </td>
+                      <td className="py-3 px-2 text-right font-semibold text-success">{entry.totalVisits}</td>
+                      <td className="py-3 px-2 text-right">{entry.orders}</td>
                       <td className="py-3 px-2 text-right">{entry.weeklyVisits}</td>
-                      <td className="py-3 px-2 text-right">{entry.totalVisits}</td>
                       <td className="py-3 px-2 text-right">{entry.workHours}h</td>
                     </tr>
                   ))}
