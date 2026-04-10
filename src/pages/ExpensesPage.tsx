@@ -43,6 +43,22 @@ const ExpensesPage: React.FC = () => {
     enabled: !!user,
   });
 
+  // Fetch profiles to show submitter names (for leads/admins)
+  const { data: profiles = [] } = useQuery({
+    queryKey: ['expense-profiles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('user_id, full_name, email');
+      return data || [];
+    },
+    enabled: !!user && (role === 'admin' || role === 'team_lead'),
+  });
+
+  const getSubmitterName = (userId: string) => {
+    if (userId === user?.id) return 'You';
+    const p = profiles.find(p => p.user_id === userId);
+    return p?.full_name || p?.email || 'Unknown';
+  };
+
   const createExpense = useMutation({
     mutationFn: async () => {
       let receiptUrl = '';
@@ -187,11 +203,17 @@ const ExpensesPage: React.FC = () => {
                     <StatusIcon className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-sm">{e.category}</p>
                       <Badge variant="outline" className={config.className}>{e.approval_status}</Badge>
                     </div>
                     <p className="text-lg font-bold">₹{Number(e.amount).toLocaleString()}</p>
+                    {canApprove && (
+                      <p className="text-xs font-medium text-primary">
+                        Submitted by: {getSubmitterName(e.user_id)}
+                      </p>
+                    )}
+                    {e.notes && <p className="text-xs text-muted-foreground mt-0.5">{e.notes}</p>}
                     {e.validation_result && <p className="text-xs text-warning mt-1">{e.validation_result}</p>}
                     <p className="text-xs text-muted-foreground">{new Date(e.created_at).toLocaleDateString()}</p>
                   </div>
