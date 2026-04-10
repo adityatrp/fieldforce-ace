@@ -11,6 +11,7 @@ import VisitsPage from "@/pages/VisitsPage";
 import ExpensesPage from "@/pages/ExpensesPage";
 import LeaderboardPage from "@/pages/LeaderboardPage";
 import TeamPage from "@/pages/TeamPage";
+import ReportsPage from "@/pages/ReportsPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const AppRoutes = () => {
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/team" element={<TeamPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>
