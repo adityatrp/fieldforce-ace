@@ -10,44 +10,49 @@ const LeaderboardPage: React.FC = () => {
   const { data: leaderboard = [], isLoading } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: async () => {
-      const [{ data: profiles }, { data: visits }, { data: targets }] = await Promise.all([
+      const [{ data: profiles }, { data: visits }, { data: targets }, { data: roles }] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('visits').select('*'),
         supabase.from('targets').select('*'),
+        supabase.from('user_roles').select('*'),
       ]);
 
       if (!profiles) return [];
 
-      return profiles.map(p => {
-        // Only count verified visits
-        const userVisits = (visits || []).filter(v => v.assigned_to === p.user_id && v.visit_status === 'verified');
-        const userTarget = (targets || []).find(t => t.user_id === p.user_id);
-        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        const thisWeek = userVisits.filter(v => new Date(v.checked_in_at) >= weekAgo);
-        const orders = userVisits.filter(v => v.order_received).length;
+      // Only include salespersons in leaderboard
+      const salespersonIds = (roles || []).filter(r => r.role === 'salesperson').map(r => r.user_id);
 
-        const workedMs = userVisits.reduce((sum, v) => {
-          if (v.checked_out_at) {
-            return sum + (new Date(v.checked_out_at).getTime() - new Date(v.checked_in_at).getTime());
-          }
-          return sum;
-        }, 0);
+      return profiles
+        .filter(p => salespersonIds.includes(p.user_id))
+        .map(p => {
+          const userVisits = (visits || []).filter(v => v.assigned_to === p.user_id && v.visit_status === 'verified');
+          const userTarget = (targets || []).find(t => t.user_id === p.user_id);
+          const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          const thisWeek = userVisits.filter(v => new Date(v.checked_in_at) >= weekAgo);
+          const orders = userVisits.filter(v => v.order_received).length;
 
-        const achievementPct = userTarget
-          ? Math.round((Number(userTarget.achieved_value) / Number(userTarget.target_value)) * 100)
-          : 0;
+          const workedMs = userVisits.reduce((sum, v) => {
+            if (v.checked_out_at) {
+              return sum + (new Date(v.checked_out_at).getTime() - new Date(v.checked_in_at).getTime());
+            }
+            return sum;
+          }, 0);
 
-        return {
-          id: p.user_id,
-          name: p.full_name || 'Unknown',
-          team: p.team_name || '',
-          totalVisits: userVisits.length,
-          weeklyVisits: thisWeek.length,
-          orders,
-          workHours: Math.round(workedMs / (1000 * 60 * 60) * 10) / 10,
-          achievementPct,
-        };
-      }).sort((a, b) => b.totalVisits - a.totalVisits || b.orders - a.orders);
+          const achievementPct = userTarget
+            ? Math.round((Number(userTarget.achieved_value) / Number(userTarget.target_value)) * 100)
+            : 0;
+
+          return {
+            id: p.user_id,
+            name: p.full_name || 'Unknown',
+            team: p.team_name || '',
+            totalVisits: userVisits.length,
+            weeklyVisits: thisWeek.length,
+            orders,
+            workHours: Math.round(workedMs / (1000 * 60 * 60) * 10) / 10,
+            achievementPct,
+          };
+        }).sort((a, b) => b.totalVisits - a.totalVisits || b.orders - a.orders);
     },
     enabled: !!user,
   });
@@ -58,7 +63,7 @@ const LeaderboardPage: React.FC = () => {
     <div className="space-y-6">
       <div>
         <h1 className="page-header">Leaderboard</h1>
-        <p className="text-muted-foreground mt-1">Top performers by verified visits</p>
+        <p className="text-muted-foreground mt-1">Top performing salespersons by verified visits</p>
       </div>
 
       {leaderboard.length >= 1 && (
@@ -71,6 +76,7 @@ const LeaderboardPage: React.FC = () => {
                   <span className="text-lg font-bold text-primary">{entry.name[0]}</span>
                 </div>
                 <p className="font-bold">{entry.name}</p>
+                {entry.team && <p className="text-xs text-muted-foreground">{entry.team}</p>}
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   <div>
                     <p className="text-lg font-bold text-success">{entry.totalVisits}</p>
@@ -107,6 +113,7 @@ const LeaderboardPage: React.FC = () => {
                   <tr className="border-b text-muted-foreground">
                     <th className="text-left py-3 px-2">#</th>
                     <th className="text-left py-3 px-2">Name</th>
+                    <th className="text-left py-3 px-2">Team</th>
                     <th className="text-right py-3 px-2">Verified</th>
                     <th className="text-right py-3 px-2">Orders</th>
                     <th className="text-right py-3 px-2">This Week</th>
@@ -125,6 +132,7 @@ const LeaderboardPage: React.FC = () => {
                           <p className="font-medium">{entry.name}</p>
                         </div>
                       </td>
+                      <td className="py-3 px-2 text-muted-foreground">{entry.team || '—'}</td>
                       <td className="py-3 px-2 text-right font-semibold text-success">{entry.totalVisits}</td>
                       <td className="py-3 px-2 text-right">{entry.orders}</td>
                       <td className="py-3 px-2 text-right">{entry.weeklyVisits}</td>

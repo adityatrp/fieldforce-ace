@@ -43,6 +43,7 @@ const VisitsPage: React.FC = () => {
   const [orderNotes, setOrderNotes] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Salesperson only sees their assigned visits
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ['visits', user?.id],
     queryFn: async () => {
@@ -77,7 +78,6 @@ const VisitsPage: React.FC = () => {
       const visit = visits.find(v => v.id === visitId);
       if (!visit) throw new Error('Visit not found');
 
-      // Upload photo if present
       let photoUrl = '';
       if (photo) {
         const ext = photo.name.split('.').pop();
@@ -89,7 +89,6 @@ const VisitsPage: React.FC = () => {
         }
       }
 
-      // Calculate distance between salesperson GPS and target location
       const distance = getDistanceMeters(
         coords.lat, coords.lng,
         visit.target_latitude!, visit.target_longitude!
