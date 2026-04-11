@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Receipt, Plus, AlertTriangle, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { Receipt, Plus, AlertTriangle, CheckCircle2, Clock, XCircle, IndianRupee } from 'lucide-react';
 
 const CATEGORIES = ['Food', 'Travel', 'Accommodation', 'Communication', 'Office Supplies', 'Other'];
 const FOOD_LIMIT = 500;
@@ -43,7 +43,6 @@ const ExpensesPage: React.FC = () => {
     enabled: !!user,
   });
 
-  // Fetch profiles to show submitter names (for leads/admins)
   const { data: profiles = [] } = useQuery({
     queryKey: ['expense-profiles'],
     queryFn: async () => {
@@ -82,13 +81,9 @@ const ExpensesPage: React.FC = () => {
       }
 
       const { error } = await supabase.from('expenses').insert({
-        user_id: user!.id,
-        category,
-        amount: amt,
-        receipt_photo_url: receiptUrl,
-        approval_status: approvalStatus,
-        validation_result: validationResult,
-        notes,
+        user_id: user!.id, category, amount: amt,
+        receipt_photo_url: receiptUrl, approval_status: approvalStatus,
+        validation_result: validationResult, notes,
       });
       if (error) throw error;
       return { approvalStatus, validationResult };
@@ -100,11 +95,7 @@ const ExpensesPage: React.FC = () => {
       } else {
         toast({ title: 'Expense submitted' });
       }
-      setOpen(false);
-      setCategory('');
-      setAmount('');
-      setNotes('');
-      setReceipt(null);
+      setOpen(false); setCategory(''); setAmount(''); setNotes(''); setReceipt(null);
     },
     onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
   });
@@ -121,6 +112,12 @@ const ExpensesPage: React.FC = () => {
   });
 
   const canApprove = role === 'admin' || role === 'team_lead';
+
+  // Aggregate stats for admin/lead
+  const totalApproved = expenses.filter(e => e.approval_status === 'approved').reduce((s, e) => s + Number(e.amount), 0);
+  const totalPending = expenses.filter(e => e.approval_status === 'pending' || e.approval_status === 'flagged').reduce((s, e) => s + Number(e.amount), 0);
+  const totalRejected = expenses.filter(e => e.approval_status === 'rejected').reduce((s, e) => s + Number(e.amount), 0);
+  const totalAll = expenses.reduce((s, e) => s + Number(e.amount), 0);
 
   return (
     <div className="space-y-6">
@@ -139,9 +136,7 @@ const ExpensesPage: React.FC = () => {
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Submit Expense</DialogTitle>
-              </DialogHeader>
+              <DialogHeader><DialogTitle>Submit Expense</DialogTitle></DialogHeader>
               <div className="space-y-4 mt-2">
                 <div className="space-y-2">
                   <Label>Category</Label>
@@ -181,6 +176,36 @@ const ExpensesPage: React.FC = () => {
           </Dialog>
         )}
       </div>
+
+      {/* Aggregate cards for admin/lead */}
+      {canApprove && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Card className="stat-card">
+            <div className="text-center">
+              <p className="text-xl font-bold">₹{totalAll.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Total</p>
+            </div>
+          </Card>
+          <Card className="stat-card">
+            <div className="text-center">
+              <p className="text-xl font-bold text-success">₹{totalApproved.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Approved</p>
+            </div>
+          </Card>
+          <Card className="stat-card">
+            <div className="text-center">
+              <p className="text-xl font-bold text-warning">₹{totalPending.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Pending</p>
+            </div>
+          </Card>
+          <Card className="stat-card">
+            <div className="text-center">
+              <p className="text-xl font-bold text-destructive">₹{totalRejected.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Rejected</p>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">Loading expenses...</div>
