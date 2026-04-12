@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -52,9 +52,37 @@ const ExpensesPage: React.FC = () => {
     enabled: !!user && (role === 'admin' || role === 'team_lead'),
   });
 
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['expense-team-members'],
+    queryFn: async () => {
+      const { data } = await supabase.from('team_members').select('*');
+      return data || [];
+    },
+    enabled: !!user && (role === 'admin' || role === 'team_lead'),
+  });
+
+  // Team lead: only see expenses from their team members
+  const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
+  const myTeamId = myTeamMembership?.team_id;
+  const myTeamMemberIds = teamMembers.filter(tm => tm.team_id === myTeamId).map(tm => tm.user_id);
+
+  const visibleExpenses = useMemo(() => {
+    if (role === 'admin') return expenses;
+    if (role === 'team_lead') {
+      return expenses.filter(e => myTeamMemberIds.includes(e.user_id) || e.user_id === user?.id);
+    }
+    return expenses; // salesperson already filtered by RLS
+  }, [expenses, role, myTeamMemberIds, user]);
+
   const getSubmitterName = (userId: string) => {
     if (userId === user?.id) return 'You';
     const p = profiles.find(p => p.user_id === userId);
+    return p?.full_name || p?.email || 'Unknown';
+  };
+
+  const getApproverName = (approvedBy: string | null) => {
+    if (!approvedBy) return null;
+    const p = profiles.find(p => p.user_id === approvedBy);
     return p?.full_name || p?.email || 'Unknown';
   };
 
@@ -77,7 +105,7 @@ const ExpensesPage: React.FC = () => {
 
       if (category === 'Food' && amt > FOOD_LIMIT) {
         approvalStatus = 'flagged';
-        validationResult = `Food expense ₹${amt} exceeds limit of ₹${FOOD_LIMIT}. Flagged for review.`;
+        validationResult = `Food expense ₹${amt} exceeds the daily limit of ₹${FOOD_LIMIT}. This has been flagged for review.`;
       }
 
       const { error } = await supabase.from('expenses').insert({
@@ -91,33 +119,37 @@ const ExpensesPage: React.FC = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       if (result.approvalStatus === 'flagged') {
-        toast({ title: '⚠️ Expense Flagged', description: result.validationResult });
+        toast({ title: 'Expense Flagged', description: result.validationResult });
       } else {
-        toast({ title: 'Expense submitted' });
+        toast({ title: 'Expense submitted successfully' });
       }
       setOpen(false); setCategory(''); setAmount(''); setNotes(''); setReceipt(null);
     },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Failed to submit expense', description: err.message, variant: 'destructive' }),
   });
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase.from('expenses').update({ approval_status: status }).eq('id', id);
+      const { error } = await supabase.from('expenses').update({
+        approval_status: status,
+        approved_by: user!.id,
+      }).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      toast({ title: 'Status updated' });
+      toast({ title: 'Expense status updated successfully' });
     },
+    onError: (err: Error) => toast({ title: 'Failed to update expense', description: err.message, variant: 'destructive' }),
   });
 
   const canApprove = role === 'admin' || role === 'team_lead';
 
-  // Aggregate stats for admin/lead
-  const totalApproved = expenses.filter(e => e.approval_status === 'approved').reduce((s, e) => s + Number(e.amount), 0);
-  const totalPending = expenses.filter(e => e.approval_status === 'pending' || e.approval_status === 'flagged').reduce((s, e) => s + Number(e.amount), 0);
-  const totalRejected = expenses.filter(e => e.approval_status === 'rejected').reduce((s, e) => s + Number(e.amount), 0);
-  const totalAll = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  // Aggregate stats
+  const totalApproved = visibleExpenses.filter(e => e.approval_status === 'approved').reduce((s, e) => s + Number(e.amount), 0);
+  const totalPending = visibleExpenses.filter(e => e.approval_status === 'pending' || e.approval_status === 'flagged').reduce((s, e) => s + Number(e.amount), 0);
+  const totalRejected = visibleExpenses.filter(e => e.approval_status === 'rejected').reduce((s, e) => s + Number(e.amount), 0);
+  const totalAll = visibleExpenses.reduce((s, e) => s + Number(e.amount), 0);
 
   return (
     <div className="space-y-6">
@@ -152,7 +184,7 @@ const ExpensesPage: React.FC = () => {
                   <Input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" min="0" step="0.01" />
                   {category === 'Food' && parseFloat(amount) > FOOD_LIMIT && (
                     <p className="text-xs text-warning flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" /> Exceeds ₹{FOOD_LIMIT} — will be flagged
+                      <AlertTriangle className="h-3 w-3" /> Exceeds ₹{FOOD_LIMIT} — will be flagged for review
                     </p>
                   )}
                 </div>
@@ -183,7 +215,7 @@ const ExpensesPage: React.FC = () => {
           <Card className="stat-card">
             <div className="text-center">
               <p className="text-xl font-bold">₹{totalAll.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Total</p>
+              <p className="text-xs text-muted-foreground">Total {role === 'team_lead' ? '(My Team)' : '(All Teams)'}</p>
             </div>
           </Card>
           <Card className="stat-card">
@@ -209,18 +241,19 @@ const ExpensesPage: React.FC = () => {
 
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">Loading expenses...</div>
-      ) : expenses.length === 0 ? (
+      ) : visibleExpenses.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Receipt className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-            <p className="text-muted-foreground">No expenses yet.</p>
+            <p className="text-muted-foreground">No expenses to display.</p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {expenses.map(e => {
+          {visibleExpenses.map(e => {
             const config = statusConfig[e.approval_status] || statusConfig.pending;
             const StatusIcon = config.icon;
+            const approverName = getApproverName((e as any).approved_by);
             return (
               <Card key={e.id} className="field-card">
                 <CardContent className="p-4 flex items-center gap-4">
@@ -236,6 +269,11 @@ const ExpensesPage: React.FC = () => {
                     {canApprove && (
                       <p className="text-xs font-medium text-primary">
                         Submitted by: {getSubmitterName(e.user_id)}
+                      </p>
+                    )}
+                    {approverName && (e.approval_status === 'approved' || e.approval_status === 'rejected') && (
+                      <p className="text-xs text-muted-foreground">
+                        {e.approval_status === 'approved' ? 'Approved' : 'Rejected'} by: {approverName}
                       </p>
                     )}
                     {e.notes && <p className="text-xs text-muted-foreground mt-0.5">{e.notes}</p>}
