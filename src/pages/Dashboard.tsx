@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Receipt, Target, Clock, CheckCircle2, XCircle, Package } from 'lucide-react';
+import { MapPin, Receipt, Target, Clock, CheckCircle2, XCircle, Package, Users, TrendingUp, IndianRupee } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const COLORS = ['hsl(213, 56%, 24%)', 'hsl(152, 55%, 42%)', 'hsl(38, 92%, 50%)', 'hsl(0, 72%, 51%)'];
@@ -13,25 +13,25 @@ const Dashboard: React.FC = () => {
   const { user, role } = useAuth();
 
   const { data: visits = [] } = useQuery({
-    queryKey: ['visits', user?.id],
+    queryKey: ['dashboard-visits', user?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('visits').select('*').order('created_at', { ascending: false }).limit(100);
+      const { data } = await supabase.from('visits').select('*').order('created_at', { ascending: false }).limit(500);
       return data || [];
     },
     enabled: !!user,
   });
 
   const { data: expenses = [] } = useQuery({
-    queryKey: ['expenses', user?.id],
+    queryKey: ['dashboard-expenses', user?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('expenses').select('*').order('created_at', { ascending: false }).limit(50);
+      const { data } = await supabase.from('expenses').select('*').order('created_at', { ascending: false }).limit(500);
       return data || [];
     },
     enabled: !!user,
   });
 
   const { data: targets = [] } = useQuery({
-    queryKey: ['targets', user?.id],
+    queryKey: ['dashboard-targets', user?.id],
     queryFn: async () => {
       const { data } = await supabase.from('targets').select('*');
       return data || [];
@@ -39,24 +39,91 @@ const Dashboard: React.FC = () => {
     enabled: !!user,
   });
 
-  // Only count verified visits for analytics
-  const verifiedVisits = visits.filter(v => v.visit_status === 'verified');
-  const failedVisits = visits.filter(v => v.visit_status === 'failed');
-  const pendingVisits = visits.filter(v => v.visit_status === 'assigned');
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['dashboard-team-members'],
+    queryFn: async () => {
+      const { data } = await supabase.from('team_members').select('*');
+      return data || [];
+    },
+    enabled: !!user && (role === 'admin' || role === 'team_lead'),
+  });
+
+  const { data: profiles = [] } = useQuery({
+    queryKey: ['dashboard-profiles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('user_id, full_name');
+      return data || [];
+    },
+    enabled: !!user && (role === 'admin' || role === 'team_lead'),
+  });
+
+  const { data: roles = [] } = useQuery({
+    queryKey: ['dashboard-roles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('user_roles').select('*');
+      return data || [];
+    },
+    enabled: !!user && (role === 'admin' || role === 'team_lead'),
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ['dashboard-teams'],
+    queryFn: async () => {
+      const { data } = await supabase.from('teams').select('*');
+      return data || [];
+    },
+    enabled: !!user && role === 'admin',
+  });
+
+  // Team lead scope
+  const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
+  const myTeamId = myTeamMembership?.team_id;
+  const myTeamMemberIds = teamMembers.filter(tm => tm.team_id === myTeamId).map(tm => tm.user_id);
+
+  // Scoped data based on role
+  const scopedVisits = useMemo(() => {
+    if (role === 'salesperson') return visits.filter(v => v.assigned_to === user?.id);
+    if (role === 'team_lead') return visits.filter(v => myTeamMemberIds.includes(v.assigned_to || ''));
+    return visits; // admin sees all
+  }, [visits, role, user, myTeamMemberIds]);
+
+  const scopedExpenses = useMemo(() => {
+    if (role === 'salesperson') return expenses.filter(e => e.user_id === user?.id);
+    if (role === 'team_lead') return expenses.filter(e => myTeamMemberIds.includes(e.user_id));
+    return expenses;
+  }, [expenses, role, user, myTeamMemberIds]);
+
+  const verifiedVisits = scopedVisits.filter(v => v.visit_status === 'verified');
+  const failedVisits = scopedVisits.filter(v => v.visit_status === 'failed');
+  const pendingVisits = scopedVisits.filter(v => v.visit_status === 'assigned');
   const ordersReceived = verifiedVisits.filter(v => v.order_received).length;
-  const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
-  const currentTarget = targets[0];
-  const achievementPct = currentTarget ? Math.round((Number(currentTarget.achieved_value) / Number(currentTarget.target_value)) * 100) : 0;
+  const totalExpenses = scopedExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const approvedExpenses = scopedExpenses.filter(e => e.approval_status === 'approved').reduce((s, e) => s + Number(e.amount), 0);
+  const pendingExpenses = scopedExpenses.filter(e => e.approval_status === 'pending' || e.approval_status === 'flagged').reduce((s, e) => s + Number(e.amount), 0);
 
   const todayVerified = verifiedVisits.filter(v =>
     new Date(v.checked_in_at).toDateString() === new Date().toDateString()
   ).length;
 
-  const stats = [
+  const teamMemberCount = role === 'team_lead' ? myTeamMemberIds.filter(id => {
+    const r = roles.find(r => r.user_id === id);
+    return r?.role === 'salesperson';
+  }).length : role === 'admin' ? roles.filter(r => r.role === 'salesperson').length : 0;
+
+  const orderConversionRate = verifiedVisits.length > 0
+    ? Math.round((ordersReceived / verifiedVisits.length) * 100)
+    : 0;
+
+  const stats = role === 'salesperson' ? [
     { label: 'Verified Visits', value: verifiedVisits.length, icon: CheckCircle2, color: 'text-success' },
     { label: 'Today', value: todayVerified, icon: Clock, color: 'text-accent' },
     { label: 'Orders', value: ordersReceived, icon: Package, color: 'text-primary' },
     { label: 'Pending', value: pendingVisits.length, icon: MapPin, color: 'text-warning' },
+  ] : [
+    { label: 'Total Visits', value: scopedVisits.length, icon: MapPin, color: 'text-primary' },
+    { label: 'Verified', value: verifiedVisits.length, icon: CheckCircle2, color: 'text-success' },
+    { label: 'Orders', value: ordersReceived, icon: Package, color: 'text-accent' },
+    { label: role === 'admin' ? 'All Salespersons' : 'Team Members', value: teamMemberCount, icon: Users, color: 'text-primary' },
   ];
 
   const weeklyData = Array.from({ length: 7 }, (_, i) => {
@@ -71,7 +138,7 @@ const Dashboard: React.FC = () => {
   });
 
   const expenseByCategory = Object.entries(
-    expenses.reduce((acc, e) => {
+    scopedExpenses.reduce((acc, e) => {
       acc[e.category] = (acc[e.category] || 0) + Number(e.amount);
       return acc;
     }, {} as Record<string, number>)
@@ -82,7 +149,7 @@ const Dashboard: React.FC = () => {
       <div>
         <h1 className="page-header">Dashboard</h1>
         <p className="text-muted-foreground mt-1">
-          {role === 'admin' ? 'Company overview' : role === 'team_lead' ? 'Team overview' : 'Your performance overview'}
+          {role === 'admin' ? 'All teams combined overview' : role === 'team_lead' ? 'Your team\'s performance overview' : 'Your performance overview'}
         </p>
       </div>
 
@@ -99,6 +166,48 @@ const Dashboard: React.FC = () => {
           </Card>
         ))}
       </div>
+
+      {/* Additional insights for admin/lead */}
+      {(role === 'admin' || role === 'team_lead') && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="stat-card">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Failed Visits</p>
+                <p className="text-2xl font-bold mt-1 text-destructive">{failedVisits.length}</p>
+              </div>
+              <XCircle className="h-5 w-5 text-destructive" />
+            </div>
+          </Card>
+          <Card className="stat-card">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Order Conversion</p>
+                <p className="text-2xl font-bold mt-1">{orderConversionRate}%</p>
+              </div>
+              <TrendingUp className="h-5 w-5 text-success" />
+            </div>
+          </Card>
+          <Card className="stat-card">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Expenses (Approved)</p>
+                <p className="text-2xl font-bold mt-1 text-success">₹{approvedExpenses.toLocaleString()}</p>
+              </div>
+              <IndianRupee className="h-5 w-5 text-success" />
+            </div>
+          </Card>
+          <Card className="stat-card">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Expenses (Pending)</p>
+                <p className="text-2xl font-bold mt-1 text-warning">₹{pendingExpenses.toLocaleString()}</p>
+              </div>
+              <Clock className="h-5 w-5 text-warning" />
+            </div>
+          </Card>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
@@ -141,6 +250,50 @@ const Dashboard: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Top performers for admin/lead */}
+      {(role === 'admin' || role === 'team_lead') && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">
+              Top Performers {role === 'team_lead' ? '(Your Team)' : '(All Teams)'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const spIds = (role === 'team_lead' ? myTeamMemberIds : roles.filter(r => r.role === 'salesperson').map(r => r.user_id));
+              const ranked = spIds.map(uid => {
+                const uVisits = scopedVisits.filter(v => v.assigned_to === uid && v.visit_status === 'verified');
+                const orders = uVisits.filter(v => v.order_received).length;
+                const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
+                return { uid, name, visits: uVisits.length, orders };
+              }).sort((a, b) => b.visits - a.visits).slice(0, 5);
+
+              if (ranked.length === 0) return <p className="text-center text-muted-foreground py-4">No performance data yet.</p>;
+
+              return (
+                <div className="space-y-2">
+                  {ranked.map((r, i) => (
+                    <div key={r.uid} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      <span className="text-lg font-bold w-6">{i + 1}</span>
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
+                        {r.name[0]}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{r.name}</p>
+                      </div>
+                      <div className="flex gap-4 text-sm">
+                        <span className="text-success font-semibold">{r.visits} visits</span>
+                        <span className="text-muted-foreground">{r.orders} orders</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent verified visits */}
       <Card>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -40,6 +40,9 @@ const TeamPage: React.FC = () => {
   const [productName, setProductName] = useState('');
   const [productUnit, setProductUnit] = useState('pcs');
   const [productPrice, setProductPrice] = useState('');
+  const [productDescription, setProductDescription] = useState('');
+  const [productSKU, setProductSKU] = useState('');
+  const [productCategory, setProductCategory] = useState('');
 
   // Create user form
   const [createUserOpen, setCreateUserOpen] = useState(false);
@@ -60,6 +63,10 @@ const TeamPage: React.FC = () => {
   // Admin: promote to lead
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [promoteUserId, setPromoteUserId] = useState('');
+  const [promoteTeamId, setPromoteTeamId] = useState('');
+
+  // Search filters
+  const [spSearch, setSpSearch] = useState('');
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['team-profiles'],
@@ -126,14 +133,61 @@ const TeamPage: React.FC = () => {
     enabled: !!viewDialog,
   });
 
-  const salespersons = profiles.filter(p => {
-    const r = roles.find(r => r.user_id === p.user_id);
-    return r?.role === 'salesperson';
-  });
+  // Team lead's team
+  const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
+  const myTeamId = myTeamMembership?.team_id;
+  const myTeamMemberIds = teamMembers.filter(tm => tm.team_id === myTeamId).map(tm => tm.user_id);
+
+  // For team lead: only show their team's salespersons. For admin: show all salespersons
+  const salespersons = useMemo(() => {
+    return profiles.filter(p => {
+      const r = roles.find(r => r.user_id === p.user_id);
+      if (r?.role !== 'salesperson') return false;
+      if (role === 'team_lead') {
+        return myTeamMemberIds.includes(p.user_id);
+      }
+      return true;
+    });
+  }, [profiles, roles, role, myTeamMemberIds]);
+
+  // Filtered salespersons for search
+  const filteredSalespersons = useMemo(() => {
+    if (!spSearch.trim()) return salespersons;
+    const q = spSearch.toLowerCase();
+    return salespersons.filter(sp =>
+      (sp.full_name || '').toLowerCase().includes(q) ||
+      (sp.email || '').toLowerCase().includes(q)
+    );
+  }, [salespersons, spSearch]);
+
+  // Members visible in Members tab
+  const visibleMembers = useMemo(() => {
+    if (role === 'admin') return profiles;
+    if (role === 'team_lead') {
+      // Only show team members of the lead's team (excluding admin and other leads)
+      return profiles.filter(p => {
+        if (p.user_id === user?.id) return true; // show self
+        const r = roles.find(r => r.user_id === p.user_id);
+        if (r?.role === 'admin') return false;
+        // Only show members of my team
+        return myTeamMemberIds.includes(p.user_id);
+      });
+    }
+    return profiles;
+  }, [profiles, roles, role, myTeamMemberIds, user]);
+
+  // Visits scoped to team for lead
+  const visibleVisits = useMemo(() => {
+    if (role === 'admin') return visits;
+    if (role === 'team_lead') {
+      return visits.filter(v => myTeamMemberIds.includes(v.assigned_to || ''));
+    }
+    return visits;
+  }, [visits, role, myTeamMemberIds]);
 
   const geocodeAddress = async () => {
     if (!address.trim()) {
-      toast({ title: 'Enter an address first', variant: 'destructive' });
+      toast({ title: 'Please enter an address', description: 'An address is required to auto-detect coordinates.', variant: 'destructive' });
       return;
     }
     setGeocoding(true);
@@ -147,12 +201,12 @@ const TeamPage: React.FC = () => {
         setTargetLat(parseFloat(results[0].lat).toFixed(6));
         setTargetLng(parseFloat(results[0].lon).toFixed(6));
         setLocationName(results[0].display_name?.split(',').slice(0, 3).join(',') || address);
-        toast({ title: '📍 Location found', description: results[0].display_name?.split(',').slice(0, 2).join(',') });
+        toast({ title: 'Location found', description: results[0].display_name?.split(',').slice(0, 2).join(',') });
       } else {
-        toast({ title: 'Address not found', description: 'Try a more specific address.', variant: 'destructive' });
+        toast({ title: 'Address not found', description: 'Please try a more specific address or enter coordinates manually.', variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Geocoding failed', variant: 'destructive' });
+      toast({ title: 'Geocoding failed', description: 'Unable to resolve address. Please check your connection and try again.', variant: 'destructive' });
     } finally {
       setGeocoding(false);
     }
@@ -161,14 +215,15 @@ const TeamPage: React.FC = () => {
   const resetForm = () => {
     setCustomerName(''); setLocationName(''); setAddress('');
     setTargetLat(''); setTargetLng(''); setAssignedTo('');
-    setNotes(''); setEditVisitId(null);
+    setNotes(''); setEditVisitId(null); setSpSearch('');
   };
 
   const assignVisitMutation = useMutation({
     mutationFn: async () => {
       const lat = parseFloat(targetLat);
       const lng = parseFloat(targetLng);
-      if (isNaN(lat) || isNaN(lng)) throw new Error('Invalid coordinates');
+      if (isNaN(lat) || isNaN(lng)) throw new Error('Please provide valid GPS coordinates.');
+      if (!assignedTo) throw new Error('Please select a salesperson to assign this visit to.');
       const { error } = await supabase.from('visits').insert({
         customer_name: customerName, location_name: locationName,
         target_latitude: lat, target_longitude: lng,
@@ -179,100 +234,116 @@ const TeamPage: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team-visits'] });
-      toast({ title: 'Visit Assigned' });
+      toast({ title: 'Visit assigned successfully' });
       setOpen(false); resetForm();
     },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Failed to assign visit', description: err.message, variant: 'destructive' }),
   });
 
   const editVisitMutation = useMutation({
     mutationFn: async () => {
-      if (!editVisitId) throw new Error('No visit selected');
+      if (!editVisitId) throw new Error('No visit selected for editing.');
       const lat = parseFloat(targetLat);
       const lng = parseFloat(targetLng);
-      if (isNaN(lat) || isNaN(lng)) throw new Error('Invalid coordinates');
+      if (isNaN(lat) || isNaN(lng)) throw new Error('Please provide valid GPS coordinates.');
       const { error } = await supabase.from('visits').update({
         customer_name: customerName, location_name: locationName,
         target_latitude: lat, target_longitude: lng,
         assigned_to: assignedTo, notes,
-        visit_status: 'assigned', // re-assign resets status
+        visit_status: 'assigned',
       }).eq('id', editVisitId);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team-visits'] });
-      toast({ title: 'Visit Updated' });
+      toast({ title: 'Visit updated successfully' });
       setEditOpen(false); resetForm();
     },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Failed to update visit', description: err.message, variant: 'destructive' }),
   });
 
   const addProductMutation = useMutation({
     mutationFn: async () => {
-      // Get team for this lead
-      const myTeam = teamMembers.find(tm => tm.user_id === user!.id);
+      let teamId = myTeamId;
+      if (role === 'admin') {
+        teamId = teams[0]?.id;
+      }
+      if (!teamId) throw new Error('No team found. Please create a team first.');
+      const price = parseFloat(productPrice);
+      if (isNaN(price) || price < 0) throw new Error('Please enter a valid price.');
       const { error } = await supabase.from('products').insert({
-        name: productName, unit: productUnit, price: parseFloat(productPrice),
+        name: productName, unit: productUnit, price,
         created_by: user!.id,
-        team_id: myTeam?.team_id || teams[0]?.id,
+        team_id: teamId,
       });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast({ title: 'Product added' });
+      toast({ title: 'Product added successfully' });
       setProductOpen(false); setProductName(''); setProductUnit('pcs'); setProductPrice('');
+      setProductDescription(''); setProductSKU(''); setProductCategory('');
     },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Failed to add product', description: err.message, variant: 'destructive' }),
   });
 
   const createTeamMutation = useMutation({
     mutationFn: async () => {
+      if (!newTeamName.trim()) throw new Error('Please enter a team name.');
       const { data: team, error } = await supabase.from('teams').insert({ name: newTeamName }).select().single();
       if (error) throw error;
-      // Add lead to team
       if (newTeamLeadId) {
         await supabase.from('team_members').insert({ team_id: team.id, user_id: newTeamLeadId });
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams', 'team-members'] });
-      toast({ title: 'Team created' });
+      toast({ title: 'Team created successfully' });
       setCreateTeamOpen(false); setNewTeamName(''); setNewTeamLeadId('');
     },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Failed to create team', description: err.message, variant: 'destructive' }),
   });
 
   const shiftMemberMutation = useMutation({
     mutationFn: async () => {
-      // Remove from current teams
       const currentMemberships = teamMembers.filter(tm => tm.user_id === shiftUserId);
       for (const m of currentMemberships) {
         await supabase.from('team_members').delete().eq('id', m.id);
       }
-      // Add to new team
       await supabase.from('team_members').insert({ team_id: shiftTeamId, user_id: shiftUserId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team-members'] });
-      toast({ title: 'Member shifted to new team' });
+      toast({ title: 'Member shifted to new team successfully' });
       setShiftOpen(false); setShiftUserId(''); setShiftTeamId('');
     },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Failed to shift member', description: err.message, variant: 'destructive' }),
   });
 
   const promoteToLeadMutation = useMutation({
     mutationFn: async () => {
-      // Update role to team_lead
+      if (!promoteUserId) throw new Error('Please select a user to promote.');
+      if (!promoteTeamId) throw new Error('Please select a team for the new lead.');
+      // Update role
       const { error } = await supabase.from('user_roles').update({ role: 'team_lead' }).eq('user_id', promoteUserId);
       if (error) throw error;
+      // Ensure they're in the selected team
+      const existing = teamMembers.find(tm => tm.user_id === promoteUserId && tm.team_id === promoteTeamId);
+      if (!existing) {
+        // Remove from current teams and add to selected team
+        const currentMemberships = teamMembers.filter(tm => tm.user_id === promoteUserId);
+        for (const m of currentMemberships) {
+          await supabase.from('team_members').delete().eq('id', m.id);
+        }
+        await supabase.from('team_members').insert({ team_id: promoteTeamId, user_id: promoteUserId });
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all-roles'] });
-      toast({ title: 'User promoted to Team Lead' });
-      setPromoteOpen(false); setPromoteUserId('');
+      queryClient.invalidateQueries({ queryKey: ['all-roles', 'team-members'] });
+      toast({ title: 'User promoted to Team Lead successfully' });
+      setPromoteOpen(false); setPromoteUserId(''); setPromoteTeamId('');
     },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Failed to promote user', description: err.message, variant: 'destructive' }),
   });
 
   const openEditDialog = (visit: typeof visits[0]) => {
@@ -294,7 +365,7 @@ const TeamPage: React.FC = () => {
         setTargetLng(pos.coords.longitude.toFixed(6));
         toast({ title: 'Location captured' });
       },
-      () => toast({ title: 'GPS Error', variant: 'destructive' }),
+      () => toast({ title: 'GPS Error', description: 'Unable to capture your current location. Please check GPS permissions.', variant: 'destructive' }),
       { enableHighAccuracy: true }
     );
   };
@@ -311,6 +382,11 @@ const TeamPage: React.FC = () => {
     return team?.name || 'Unassigned';
   };
 
+  const getTeamNameById = (teamId: string) => {
+    const team = teams.find(t => t.id === teamId);
+    return team?.name || 'Unknown';
+  };
+
   const statusColor: Record<string, string> = {
     assigned: 'bg-accent/10 text-accent',
     verified: 'bg-success/10 text-success',
@@ -318,6 +394,31 @@ const TeamPage: React.FC = () => {
   };
 
   const viewVisit = visits.find(v => v.id === viewDialog);
+
+  const renderSalespersonSelect = () => (
+    <div className="space-y-2">
+      <Label>Assign To</Label>
+      <Input
+        placeholder="Search salesperson..."
+        value={spSearch}
+        onChange={e => setSpSearch(e.target.value)}
+        className="mb-2"
+      />
+      <Select value={assignedTo} onValueChange={setAssignedTo}>
+        <SelectTrigger><SelectValue placeholder="Select salesperson" /></SelectTrigger>
+        <SelectContent>
+          {filteredSalespersons.map(sp => (
+            <SelectItem key={sp.user_id} value={sp.user_id}>
+              {sp.full_name || sp.email} ({getTeamName(sp.user_id)})
+            </SelectItem>
+          ))}
+          {filteredSalespersons.length === 0 && (
+            <div className="px-2 py-3 text-sm text-muted-foreground text-center">No salespersons found</div>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 
   const renderVisitForm = (isEdit: boolean) => (
     <div className="space-y-4 mt-2">
@@ -350,19 +451,7 @@ const TeamPage: React.FC = () => {
         </Button>
         <p className="text-xs text-muted-foreground">Salesperson must be within 20m of this location to verify.</p>
       </div>
-      <div className="space-y-2">
-        <Label>Assign To</Label>
-        <Select value={assignedTo} onValueChange={setAssignedTo}>
-          <SelectTrigger><SelectValue placeholder="Select salesperson" /></SelectTrigger>
-          <SelectContent>
-            {salespersons.map(sp => (
-              <SelectItem key={sp.user_id} value={sp.user_id}>
-                {sp.full_name || sp.email} ({getTeamName(sp.user_id)})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {renderSalespersonSelect()}
       <div className="space-y-2">
         <Label>Notes</Label>
         <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Visit instructions..." rows={2} />
@@ -426,6 +515,10 @@ const TeamPage: React.FC = () => {
                   <p className="font-medium">{getAssigneeName(viewVisit.assigned_to || '')}</p>
                 </div>
                 <div>
+                  <p className="text-muted-foreground">Team</p>
+                  <p className="font-medium">{getTeamName(viewVisit.assigned_to || '')}</p>
+                </div>
+                <div>
                   <p className="text-muted-foreground">Checked In</p>
                   <p className="font-medium">{viewVisit.visit_status !== 'assigned' ? new Date(viewVisit.checked_in_at).toLocaleString() : 'Not yet'}</p>
                 </div>
@@ -449,8 +542,8 @@ const TeamPage: React.FC = () => {
               )}
               {viewVisit.photo_url && (
                 <div>
-                  <p className="text-sm text-muted-foreground mb-2">Photo</p>
-                  <img src={viewVisit.photo_url} alt="Visit" className="rounded-lg max-h-48 object-cover w-full" />
+                  <p className="text-sm text-muted-foreground mb-2">Visit Photo</p>
+                  <img src={viewVisit.photo_url} alt="Visit photo" className="rounded-lg max-h-64 object-cover w-full cursor-pointer" onClick={() => window.open(viewVisit.photo_url!, '_blank')} />
                 </div>
               )}
               {viewVisit.notes && (
@@ -487,16 +580,35 @@ const TeamPage: React.FC = () => {
           <DialogHeader><DialogTitle>Add Product</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-2">
             <div className="space-y-2">
-              <Label>Product Name</Label>
-              <Input value={productName} onChange={e => setProductName(e.target.value)} placeholder="e.g. Widget A" />
+              <Label>Product Name *</Label>
+              <Input value={productName} onChange={e => setProductName(e.target.value)} placeholder="e.g. Premium Widget" />
+            </div>
+            <div className="space-y-2">
+              <Label>SKU / Product Code</Label>
+              <Input value={productSKU} onChange={e => setProductSKU(e.target.value)} placeholder="e.g. WDG-001" />
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Input value={productCategory} onChange={e => setProductCategory(e.target.value)} placeholder="e.g. Electronics, FMCG" />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea value={productDescription} onChange={e => setProductDescription(e.target.value)} placeholder="Product details..." rows={2} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Unit</Label>
-                <Input value={productUnit} onChange={e => setProductUnit(e.target.value)} placeholder="pcs" />
+                <Label>Unit *</Label>
+                <Select value={productUnit} onValueChange={setProductUnit}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['pcs', 'kg', 'ltr', 'box', 'pack', 'dozen', 'unit'].map(u => (
+                      <SelectItem key={u} value={u}>{u}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label>Price (₹)</Label>
+                <Label>Price (₹) *</Label>
                 <Input type="number" value={productPrice} onChange={e => setProductPrice(e.target.value)} placeholder="0" min="0" />
               </div>
             </div>
@@ -582,12 +694,23 @@ const TeamPage: React.FC = () => {
                 <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
                 <SelectContent>
                   {salespersons.map(sp => (
-                    <SelectItem key={sp.user_id} value={sp.user_id}>{sp.full_name || sp.email}</SelectItem>
+                    <SelectItem key={sp.user_id} value={sp.user_id}>{sp.full_name || sp.email} ({getTeamName(sp.user_id)})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <Button className="w-full" disabled={!promoteUserId || promoteToLeadMutation.isPending} onClick={() => promoteToLeadMutation.mutate()}>
+            <div className="space-y-2">
+              <Label>Assign as Lead for Team</Label>
+              <Select value={promoteTeamId} onValueChange={setPromoteTeamId}>
+                <SelectTrigger><SelectValue placeholder="Select team" /></SelectTrigger>
+                <SelectContent>
+                  {teams.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button className="w-full" disabled={!promoteUserId || !promoteTeamId || promoteToLeadMutation.isPending} onClick={() => promoteToLeadMutation.mutate()}>
               {promoteToLeadMutation.isPending ? 'Promoting...' : 'Promote to Team Lead'}
             </Button>
           </div>
@@ -603,7 +726,7 @@ const TeamPage: React.FC = () => {
         </TabsList>
 
         <TabsContent value="visits" className="space-y-3">
-          {visits.length === 0 ? (
+          {visibleVisits.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <MapPin className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
@@ -611,7 +734,7 @@ const TeamPage: React.FC = () => {
               </CardContent>
             </Card>
           ) : (
-            visits.map(v => (
+            visibleVisits.map(v => (
               <Card key={v.id} className="field-card">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
@@ -623,7 +746,9 @@ const TeamPage: React.FC = () => {
                       </div>
                       {v.location_name && <p className="text-xs text-muted-foreground">📍 {v.location_name}</p>}
                       <p className="text-xs text-muted-foreground">
-                        Assigned to: <strong>{getAssigneeName(v.assigned_to!)}</strong> · {new Date(v.created_at).toLocaleDateString()}
+                        Assigned to: <strong>{getAssigneeName(v.assigned_to!)}</strong>
+                        {role === 'admin' && ` · Team: ${getTeamName(v.assigned_to || '')}`}
+                        {' · '}{new Date(v.created_at).toLocaleDateString()}
                       </p>
                     </div>
                     <div className="flex gap-2 shrink-0">
@@ -688,7 +813,7 @@ const TeamPage: React.FC = () => {
               </>
             )}
           </div>
-          {/* Create User Dialog (lead creates salesperson) */}
+          {/* Create User Dialog */}
           <Dialog open={createUserOpen} onOpenChange={setCreateUserOpen}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader><DialogTitle>Create New Salesperson</DialogTitle></DialogHeader>
@@ -714,11 +839,11 @@ const TeamPage: React.FC = () => {
                         options: { data: { full_name: newUserName } },
                       });
                       if (error) throw error;
-                      toast({ title: 'Salesperson created', description: 'They can now log in. Check email for verification.' });
+                      toast({ title: 'Salesperson created successfully', description: 'They can now log in after email verification.' });
                       setCreateUserOpen(false); setNewUserEmail(''); setNewUserPassword(''); setNewUserName('');
                       queryClient.invalidateQueries({ queryKey: ['team-profiles'] });
                     } catch (err: any) {
-                      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+                      toast({ title: 'Failed to create user', description: err.message, variant: 'destructive' });
                     }
                   }}
                 >Create Salesperson</Button>
@@ -730,7 +855,7 @@ const TeamPage: React.FC = () => {
             <p className="text-center text-muted-foreground py-8">Loading team...</p>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {profiles.map(p => {
+              {visibleMembers.map(p => {
                 const userRole = roles.find(r => r.user_id === p.user_id);
                 const memberVisits = visits.filter(v => v.assigned_to === p.user_id);
                 const verified = memberVisits.filter(v => v.visit_status === 'verified').length;
@@ -799,6 +924,9 @@ const TeamPage: React.FC = () => {
                               <Badge variant="secondary" className="text-[10px] capitalize">{(mp?.role || 'salesperson').replace('_', ' ')}</Badge>
                             </div>
                           ))}
+                          {memberProfiles.length === 0 && (
+                            <p className="text-xs text-muted-foreground">No members assigned to this team yet.</p>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
