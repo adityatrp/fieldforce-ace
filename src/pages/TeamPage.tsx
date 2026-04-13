@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft } from 'lucide-react';
+import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft, Target, Bell } from 'lucide-react';
 
 const TeamPage: React.FC = () => {
   const { user, role } = useAuth();
@@ -64,6 +64,10 @@ const TeamPage: React.FC = () => {
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [promoteUserId, setPromoteUserId] = useState('');
   const [promoteTeamId, setPromoteTeamId] = useState('');
+
+  // Target setting
+  const [targetOpen, setTargetOpen] = useState(false);
+  const [teamTargetValue, setTeamTargetValue] = useState('');
 
   // Search filters
   const [spSearch, setSpSearch] = useState('');
@@ -122,6 +126,15 @@ const TeamPage: React.FC = () => {
     enabled: !!user,
   });
 
+  const { data: targets = [] } = useQuery({
+    queryKey: ['team-targets'],
+    queryFn: async () => {
+      const { data } = await supabase.from('targets').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
   // View visit order items
   const { data: visitOrderItems = [] } = useQuery({
     queryKey: ['visit-order-items-team', viewDialog],
@@ -138,7 +151,6 @@ const TeamPage: React.FC = () => {
   const myTeamId = myTeamMembership?.team_id;
   const myTeamMemberIds = teamMembers.filter(tm => tm.team_id === myTeamId).map(tm => tm.user_id);
 
-  // For team lead: only show their team's salespersons. For admin: show all salespersons
   const salespersons = useMemo(() => {
     return profiles.filter(p => {
       const r = roles.find(r => r.user_id === p.user_id);
@@ -150,7 +162,6 @@ const TeamPage: React.FC = () => {
     });
   }, [profiles, roles, role, myTeamMemberIds]);
 
-  // Filtered salespersons for search
   const filteredSalespersons = useMemo(() => {
     if (!spSearch.trim()) return salespersons;
     const q = spSearch.toLowerCase();
@@ -160,23 +171,19 @@ const TeamPage: React.FC = () => {
     );
   }, [salespersons, spSearch]);
 
-  // Members visible in Members tab
   const visibleMembers = useMemo(() => {
     if (role === 'admin') return profiles;
     if (role === 'team_lead') {
-      // Only show team members of the lead's team (excluding admin and other leads)
       return profiles.filter(p => {
-        if (p.user_id === user?.id) return true; // show self
+        if (p.user_id === user?.id) return true;
         const r = roles.find(r => r.user_id === p.user_id);
         if (r?.role === 'admin') return false;
-        // Only show members of my team
         return myTeamMemberIds.includes(p.user_id);
       });
     }
     return profiles;
   }, [profiles, roles, role, myTeamMemberIds, user]);
 
-  // Visits scoped to team for lead
   const visibleVisits = useMemo(() => {
     if (role === 'admin') return visits;
     if (role === 'team_lead') {
@@ -287,6 +294,31 @@ const TeamPage: React.FC = () => {
     onError: (err: Error) => toast({ title: 'Failed to add product', description: err.message, variant: 'destructive' }),
   });
 
+  const setTeamTargetMutation = useMutation({
+    mutationFn: async () => {
+      const targetVal = parseFloat(teamTargetValue);
+      if (isNaN(targetVal) || targetVal <= 0) throw new Error('Please enter a valid target value.');
+
+      const spIds = role === 'team_lead' ? salespersons.map(s => s.user_id) : [];
+      if (spIds.length === 0) throw new Error('No salespersons found in your team.');
+
+      for (const uid of spIds) {
+        const existing = targets.find(t => t.user_id === uid);
+        if (existing) {
+          await supabase.from('targets').update({ target_value: targetVal }).eq('id', existing.id);
+        } else {
+          await supabase.from('targets').insert({ user_id: uid, target_value: targetVal, achieved_value: 0 });
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-targets'] });
+      toast({ title: 'Target set for all team members successfully' });
+      setTargetOpen(false); setTeamTargetValue('');
+    },
+    onError: (err: Error) => toast({ title: 'Failed to set targets', description: err.message, variant: 'destructive' }),
+  });
+
   const createTeamMutation = useMutation({
     mutationFn: async () => {
       if (!newTeamName.trim()) throw new Error('Please enter a team name.');
@@ -324,13 +356,10 @@ const TeamPage: React.FC = () => {
     mutationFn: async () => {
       if (!promoteUserId) throw new Error('Please select a user to promote.');
       if (!promoteTeamId) throw new Error('Please select a team for the new lead.');
-      // Update role
       const { error } = await supabase.from('user_roles').update({ role: 'team_lead' }).eq('user_id', promoteUserId);
       if (error) throw error;
-      // Ensure they're in the selected team
       const existing = teamMembers.find(tm => tm.user_id === promoteUserId && tm.team_id === promoteTeamId);
       if (!existing) {
-        // Remove from current teams and add to selected team
         const currentMemberships = teamMembers.filter(tm => tm.user_id === promoteUserId);
         for (const m of currentMemberships) {
           await supabase.from('team_members').delete().eq('id', m.id);
@@ -363,10 +392,10 @@ const TeamPage: React.FC = () => {
       pos => {
         setTargetLat(pos.coords.latitude.toFixed(6));
         setTargetLng(pos.coords.longitude.toFixed(6));
-        toast({ title: 'Location captured' });
+        toast({ title: 'Location captured', description: `Accuracy: ±${Math.round(pos.coords.accuracy)}m` });
       },
       () => toast({ title: 'GPS Error', description: 'Unable to capture your current location. Please check GPS permissions.', variant: 'destructive' }),
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
   };
 
@@ -398,12 +427,15 @@ const TeamPage: React.FC = () => {
   const renderSalespersonSelect = () => (
     <div className="space-y-2">
       <Label>Assign To</Label>
-      <Input
-        placeholder="Search salesperson..."
-        value={spSearch}
-        onChange={e => setSpSearch(e.target.value)}
-        className="mb-2"
-      />
+      <div className="relative">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search salesperson..."
+          value={spSearch}
+          onChange={e => setSpSearch(e.target.value)}
+          className="pl-9 mb-2"
+        />
+      </div>
       <Select value={assignedTo} onValueChange={setAssignedTo}>
         <SelectTrigger><SelectValue placeholder="Select salesperson" /></SelectTrigger>
         <SelectContent>
@@ -449,7 +481,7 @@ const TeamPage: React.FC = () => {
         <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={grabCurrentLocation}>
           <Navigation className="h-4 w-4" /> Use My Current Location
         </Button>
-        <p className="text-xs text-muted-foreground">Salesperson must be within 20m of this location to verify.</p>
+        <p className="text-xs text-muted-foreground">Salesperson must be within 40m of this location to verify.</p>
       </div>
       {renderSalespersonSelect()}
       <div className="space-y-2">
@@ -477,6 +509,11 @@ const TeamPage: React.FC = () => {
           <p className="text-muted-foreground mt-1">Assign visits, manage products and your team</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          {role === 'team_lead' && (
+            <Button variant="outline" onClick={() => setTargetOpen(true)} className="gap-2">
+              <Target className="h-4 w-4" /> Set Team Target
+            </Button>
+          )}
           <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
             <DialogTrigger asChild>
               <Button size="lg" className="h-12 px-6 text-base gap-2">
@@ -490,6 +527,51 @@ const TeamPage: React.FC = () => {
           </Dialog>
         </div>
       </div>
+
+      {/* Set Target Dialog */}
+      <Dialog open={targetOpen} onOpenChange={setTargetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Set Monthly Target for Team</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-2">
+            <p className="text-sm text-muted-foreground">
+              This will set the same monthly target for all {salespersons.length} salesperson(s) in your team.
+            </p>
+            {salespersons.length > 0 && (
+              <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1">
+                <p className="font-medium">Current team members:</p>
+                {salespersons.map(sp => {
+                  const existing = targets.find(t => t.user_id === sp.user_id);
+                  return (
+                    <div key={sp.user_id} className="flex justify-between">
+                      <span>{sp.full_name || sp.email}</span>
+                      <span className="text-muted-foreground">
+                        {existing ? `Current: ₹${Number(existing.target_value).toLocaleString()}` : 'No target'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Monthly Target Amount (₹)</Label>
+              <Input
+                type="number"
+                value={teamTargetValue}
+                onChange={e => setTeamTargetValue(e.target.value)}
+                placeholder="e.g. 100000"
+                min="0"
+              />
+            </div>
+            <Button
+              className="w-full"
+              disabled={!teamTargetValue || setTeamTargetMutation.isPending}
+              onClick={() => setTeamTargetMutation.mutate()}
+            >
+              {setTeamTargetMutation.isPending ? 'Setting targets...' : `Set Target for ${salespersons.length} Members`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Visit Dialog */}
       <Dialog open={editOpen} onOpenChange={o => { setEditOpen(o); if (!o) resetForm(); }}>
@@ -771,15 +853,17 @@ const TeamPage: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="products" className="space-y-3">
-          <div className="flex justify-end">
-            <Button onClick={() => setProductOpen(true)} className="gap-2">
-              <Plus className="h-4 w-4" /> Add Product
-            </Button>
-          </div>
+          {(role === 'team_lead' || role === 'admin') && (
+            <div className="flex justify-end">
+              <Button onClick={() => setProductOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" /> Add Product
+              </Button>
+            </div>
+          )}
           {products.length === 0 ? (
             <Card><CardContent className="py-12 text-center">
               <Package className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-              <p className="text-muted-foreground">No products yet. Add products so salespersons can take orders.</p>
+              <p className="text-muted-foreground">No products yet. {role === 'team_lead' || role === 'admin' ? 'Add products so salespersons can take orders.' : 'Your team lead will add products.'}</p>
             </CardContent></Card>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
