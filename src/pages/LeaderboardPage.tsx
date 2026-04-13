@@ -1,70 +1,197 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 
 const LeaderboardPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const [selectedTeam, setSelectedTeam] = useState<string>('all');
 
-  const { data: leaderboard = [], isLoading } = useQuery({
-    queryKey: ['leaderboard'],
+  const { data: profiles = [] } = useQuery({
+    queryKey: ['lb-profiles'],
     queryFn: async () => {
-      const [{ data: profiles }, { data: visits }, { data: targets }, { data: roles }] = await Promise.all([
-        supabase.from('profiles').select('*'),
-        supabase.from('visits').select('*'),
-        supabase.from('targets').select('*'),
-        supabase.from('user_roles').select('*'),
-      ]);
-
-      if (!profiles) return [];
-
-      // Only include salespersons in leaderboard
-      const salespersonIds = (roles || []).filter(r => r.role === 'salesperson').map(r => r.user_id);
-
-      return profiles
-        .filter(p => salespersonIds.includes(p.user_id))
-        .map(p => {
-          const userVisits = (visits || []).filter(v => v.assigned_to === p.user_id && v.visit_status === 'verified');
-          const userTarget = (targets || []).find(t => t.user_id === p.user_id);
-          const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-          const thisWeek = userVisits.filter(v => new Date(v.checked_in_at) >= weekAgo);
-          const orders = userVisits.filter(v => v.order_received).length;
-
-          const workedMs = userVisits.reduce((sum, v) => {
-            if (v.checked_out_at) {
-              return sum + (new Date(v.checked_out_at).getTime() - new Date(v.checked_in_at).getTime());
-            }
-            return sum;
-          }, 0);
-
-          const achievementPct = userTarget
-            ? Math.round((Number(userTarget.achieved_value) / Number(userTarget.target_value)) * 100)
-            : 0;
-
-          return {
-            id: p.user_id,
-            name: p.full_name || 'Unknown',
-            team: p.team_name || '',
-            totalVisits: userVisits.length,
-            weeklyVisits: thisWeek.length,
-            orders,
-            workHours: Math.round(workedMs / (1000 * 60 * 60) * 10) / 10,
-            achievementPct,
-          };
-        }).sort((a, b) => b.totalVisits - a.totalVisits || b.orders - a.orders);
+      const { data } = await supabase.from('profiles').select('*');
+      return data || [];
     },
     enabled: !!user,
   });
+
+  const { data: visits = [] } = useQuery({
+    queryKey: ['lb-visits'],
+    queryFn: async () => {
+      const { data } = await supabase.from('visits').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: targets = [] } = useQuery({
+    queryKey: ['lb-targets'],
+    queryFn: async () => {
+      const { data } = await supabase.from('targets').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: roles = [] } = useQuery({
+    queryKey: ['lb-roles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('user_roles').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ['lb-teams'],
+    queryFn: async () => {
+      const { data } = await supabase.from('teams').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['lb-team-members'],
+    queryFn: async () => {
+      const { data } = await supabase.from('team_members').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const getTeamName = (userId: string) => {
+    const membership = teamMembers.find(tm => tm.user_id === userId);
+    if (!membership) return 'Unassigned';
+    const team = teams.find(t => t.id === membership.team_id);
+    return team?.name || 'Unassigned';
+  };
+
+  const getTeamId = (userId: string) => {
+    const membership = teamMembers.find(tm => tm.user_id === userId);
+    return membership?.team_id || '';
+  };
+
+  const leaderboard = useMemo(() => {
+    const salespersonIds = roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
+
+    return profiles
+      .filter(p => salespersonIds.includes(p.user_id))
+      .filter(p => selectedTeam === 'all' || getTeamId(p.user_id) === selectedTeam)
+      .map(p => {
+        const userVisits = visits.filter(v => v.assigned_to === p.user_id && v.visit_status === 'verified');
+        const userTarget = targets.find(t => t.user_id === p.user_id);
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const thisWeek = userVisits.filter(v => new Date(v.checked_in_at) >= weekAgo);
+        const orders = userVisits.filter(v => v.order_received).length;
+
+        const workedMs = userVisits.reduce((sum, v) => {
+          if (v.checked_out_at) {
+            return sum + (new Date(v.checked_out_at).getTime() - new Date(v.checked_in_at).getTime());
+          }
+          return sum;
+        }, 0);
+
+        const achievementPct = userTarget
+          ? Math.round((Number(userTarget.achieved_value) / Number(userTarget.target_value)) * 100)
+          : 0;
+
+        return {
+          id: p.user_id,
+          name: p.full_name || 'Unknown',
+          team: getTeamName(p.user_id),
+          teamId: getTeamId(p.user_id),
+          totalVisits: userVisits.length,
+          weeklyVisits: thisWeek.length,
+          orders,
+          workHours: Math.round(workedMs / (1000 * 60 * 60) * 10) / 10,
+          achievementPct,
+        };
+      }).sort((a, b) => b.totalVisits - a.totalVisits || b.orders - a.orders);
+  }, [profiles, visits, targets, roles, selectedTeam, teamMembers, teams]);
+
+  // Team-wise aggregation for admin
+  const teamStats = useMemo(() => {
+    if (role !== 'admin') return [];
+    const salespersonIds = roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
+    return teams.map(t => {
+      const memberIds = teamMembers.filter(tm => tm.team_id === t.id).map(tm => tm.user_id).filter(id => salespersonIds.includes(id));
+      const teamVisits = visits.filter(v => memberIds.includes(v.assigned_to || '') && v.visit_status === 'verified');
+      const teamOrders = teamVisits.filter(v => v.order_received).length;
+      return {
+        teamId: t.id,
+        teamName: t.name,
+        members: memberIds.length,
+        totalVisits: teamVisits.length,
+        orders: teamOrders,
+        conversionRate: teamVisits.length > 0 ? Math.round((teamOrders / teamVisits.length) * 100) : 0,
+      };
+    }).sort((a, b) => b.totalVisits - a.totalVisits);
+  }, [teams, teamMembers, visits, roles, role]);
 
   const medals = ['🥇', '🥈', '🥉'];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-header">Leaderboard</h1>
-        <p className="text-muted-foreground mt-1">Top performing salespersons by verified visits</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="page-header">Leaderboard</h1>
+          <p className="text-muted-foreground mt-1">Top performing salespersons by verified visits</p>
+        </div>
+        {role === 'admin' && teams.length > 0 && (
+          <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filter by team" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Teams</SelectItem>
+              {teams.map(t => (
+                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
+
+      {/* Team-wise performance for admin */}
+      {role === 'admin' && teamStats.length > 0 && selectedTeam === 'all' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">Team-wise Performance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {teamStats.map(ts => (
+                <div key={ts.teamId} className="p-4 rounded-lg bg-muted/50 space-y-2">
+                  <p className="font-bold">{ts.teamName}</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Members</p>
+                      <p className="font-semibold">{ts.members}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Verified Visits</p>
+                      <p className="font-semibold text-success">{ts.totalVisits}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Orders</p>
+                      <p className="font-semibold">{ts.orders}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Conversion</p>
+                      <p className="font-semibold">{ts.conversionRate}%</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {leaderboard.length >= 1 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -99,12 +226,10 @@ const LeaderboardPage: React.FC = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Full Rankings</CardTitle>
+          <CardTitle className="text-base font-semibold">Full Rankings {selectedTeam !== 'all' ? `— ${teams.find(t => t.id === selectedTeam)?.name}` : ''}</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <p className="text-center text-muted-foreground py-8">Loading...</p>
-          ) : leaderboard.length === 0 ? (
+          {leaderboard.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">No data available yet.</p>
           ) : (
             <div className="overflow-x-auto">

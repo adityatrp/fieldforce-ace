@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye, Plus, Minus } from 'lucide-react';
+import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye, Plus, Minus, Search, Percent } from 'lucide-react';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -22,7 +22,7 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const GPS_THRESHOLD_METERS = 20;
+const GPS_THRESHOLD_METERS = 40;
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   assigned: { label: 'Assigned', color: 'bg-accent/10 text-accent border-accent/20', icon: Clock },
@@ -47,10 +47,12 @@ const VisitsPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [orderReceived, setOrderReceived] = useState(false);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [orderNotes, setOrderNotes] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [discountPercent, setDiscountPercent] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: visits = [], isLoading } = useQuery({
@@ -65,7 +67,6 @@ const VisitsPage: React.FC = () => {
     enabled: !!user,
   });
 
-  // Fetch products for order selection
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: async () => {
@@ -75,7 +76,6 @@ const VisitsPage: React.FC = () => {
     enabled: !!user && role === 'salesperson',
   });
 
-  // Fetch order items for view dialog
   const { data: visitOrderItems = [] } = useQuery({
     queryKey: ['visit-order-items', viewDialog],
     queryFn: async () => {
@@ -86,18 +86,30 @@ const VisitsPage: React.FC = () => {
     enabled: !!viewDialog,
   });
 
+  const filteredProducts = useMemo(() => {
+    if (!productSearch.trim()) return products;
+    const q = productSearch.toLowerCase();
+    return products.filter(p =>
+      p.name.toLowerCase().includes(q)
+    );
+  }, [products, productSearch]);
+
   const grabGPS = () => {
     setGpsStatus('loading');
     navigator.geolocation.getCurrentPosition(
       pos => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
         setGpsStatus('success');
+        toast({
+          title: 'Location acquired',
+          description: `Accuracy: ±${Math.round(pos.coords.accuracy)}m`,
+        });
       },
-      () => {
+      (err) => {
         setGpsStatus('error');
-        toast({ title: 'GPS Error', description: 'Could not get location.', variant: 'destructive' });
+        toast({ title: 'GPS Error', description: `Could not get location: ${err.message}`, variant: 'destructive' });
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
@@ -123,6 +135,10 @@ const VisitsPage: React.FC = () => {
   const removeProduct = (productId: string) => {
     setOrderItems(prev => prev.filter(oi => oi.product_id !== productId));
   };
+
+  const subtotal = orderItems.reduce((s, oi) => s + oi.price * oi.quantity, 0);
+  const discountAmount = subtotal * (discountPercent / 100);
+  const grandTotal = subtotal - discountAmount;
 
   const checkInMutation = useMutation({
     mutationFn: async (visitId: string) => {
@@ -150,6 +166,8 @@ const VisitsPage: React.FC = () => {
       const isVerified = distance <= GPS_THRESHOLD_METERS;
       const now = new Date().toISOString();
 
+      const finalDiscount = orderReceived && orderItems.length > 0 ? discountPercent : 0;
+
       const { error } = await supabase.from('visits').update({
         checked_in_at: now,
         latitude: coords.lat,
@@ -158,18 +176,18 @@ const VisitsPage: React.FC = () => {
         notes,
         visit_status: isVerified ? 'verified' : 'failed',
         order_received: orderReceived && orderItems.length > 0,
-        order_notes: orderNotes,
+        order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
       }).eq('id', visitId);
 
       if (error) throw error;
 
-      // Insert order items if any
       if (orderReceived && orderItems.length > 0) {
+        const discountMultiplier = 1 - (finalDiscount / 100);
         const items = orderItems.map(oi => ({
           visit_id: visitId,
           product_id: oi.product_id,
           quantity: oi.quantity,
-          price_at_order: oi.price,
+          price_at_order: Math.round(oi.price * discountMultiplier * 100) / 100,
         }));
         await supabase.from('visit_order_items').insert(items);
       }
@@ -189,7 +207,7 @@ const VisitsPage: React.FC = () => {
       }
       resetDialog();
     },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Check-in failed', description: err.message, variant: 'destructive' }),
   });
 
   const checkOutMutation = useMutation({
@@ -201,7 +219,7 @@ const VisitsPage: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
-      toast({ title: 'Checked out!' });
+      toast({ title: 'Checked out successfully' });
     },
   });
 
@@ -214,12 +232,13 @@ const VisitsPage: React.FC = () => {
     setOrderReceived(false);
     setOrderItems([]);
     setOrderNotes('');
+    setProductSearch('');
+    setDiscountPercent(0);
   };
 
   const selectedVisit = visits.find(v => v.id === checkInDialog);
   const viewVisit = visits.find(v => v.id === viewDialog);
 
-  // Summary counts
   const totalVisits = visits.length;
   const verified = visits.filter(v => v.visit_status === 'verified').length;
   const failed = visits.filter(v => v.visit_status === 'failed').length;
@@ -230,13 +249,10 @@ const VisitsPage: React.FC = () => {
       <div>
         <h1 className="page-header">My Visits</h1>
         <p className="text-muted-foreground mt-1">
-          {role === 'salesperson'
-            ? 'Visits assigned to you by your team lead'
-            : 'All visits across the team'}
+          Visits assigned to you by your team lead
         </p>
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="stat-card">
           <div className="text-center">
@@ -305,7 +321,6 @@ const VisitsPage: React.FC = () => {
                       </p>
                     </div>
                     <div className="flex gap-2 shrink-0">
-                      {/* View details for completed visits */}
                       {(v.visit_status === 'verified' || v.visit_status === 'failed') && (
                         <Button size="sm" variant="outline" onClick={() => setViewDialog(v.id)}>
                           <Eye className="h-3.5 w-3.5" />
@@ -435,8 +450,13 @@ const VisitsPage: React.FC = () => {
                 <Label>Your GPS Location (required)</Label>
                 <Button type="button" variant="outline" className="w-full gap-2" onClick={grabGPS} disabled={gpsStatus === 'loading'}>
                   <Navigation className="h-4 w-4" />
-                  {gpsStatus === 'loading' ? 'Getting location...' : gpsStatus === 'success' ? `📍 ${coords!.lat.toFixed(5)}, ${coords!.lng.toFixed(5)}` : 'Get My Location'}
+                  {gpsStatus === 'loading' ? 'Getting precise location...' : gpsStatus === 'success' ? `📍 ${coords!.lat.toFixed(5)}, ${coords!.lng.toFixed(5)} (±${Math.round(coords!.accuracy)}m)` : 'Get My Location'}
                 </Button>
+                {gpsStatus === 'success' && coords!.accuracy > 40 && (
+                  <p className="text-xs text-warning flex items-center gap-1">
+                    ⚠️ Low GPS accuracy (±{Math.round(coords!.accuracy)}m). Try moving to an open area and tap again.
+                  </p>
+                )}
                 {gpsStatus === 'success' && selectedVisit.target_latitude && (
                   <p className="text-xs text-muted-foreground">
                     Distance: {Math.round(getDistanceMeters(coords!.lat, coords!.lng, selectedVisit.target_latitude, selectedVisit.target_longitude!))}m
@@ -474,20 +494,48 @@ const VisitsPage: React.FC = () => {
                 </div>
                 {orderReceived && (
                   <div className="space-y-3 mt-2 p-3 bg-muted/50 rounded-lg">
-                    <Label className="text-xs font-semibold">Select Products</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {products.map(p => (
-                        <Button key={p.id} type="button" variant="outline" size="sm" className="text-xs" onClick={() => addProduct(p.id)}>
-                          <Plus className="h-3 w-3 mr-1" /> {p.name} (₹{Number(p.price)})
-                        </Button>
-                      ))}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold">Search Products</Label>
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search by product name..."
+                          value={productSearch}
+                          onChange={e => setProductSearch(e.target.value)}
+                          className="pl-9"
+                        />
+                      </div>
                     </div>
-                    {products.length === 0 && <p className="text-xs text-muted-foreground">No products available. Ask your team lead to add products.</p>}
+                    <div className="max-h-40 overflow-y-auto space-y-1">
+                      {filteredProducts.map(p => (
+                        <div
+                          key={p.id}
+                          className="flex items-center justify-between p-2 rounded hover:bg-background cursor-pointer text-sm"
+                          onClick={() => addProduct(p.id)}
+                        >
+                          <div>
+                            <span className="font-medium">{p.name}</span>
+                            <span className="text-muted-foreground ml-1">({p.unit})</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">₹{Number(p.price)}</span>
+                            <Plus className="h-4 w-4 text-primary" />
+                          </div>
+                        </div>
+                      ))}
+                      {filteredProducts.length === 0 && (
+                        <p className="text-xs text-muted-foreground text-center py-2">
+                          {products.length === 0 ? 'No products available. Ask your team lead to add products.' : 'No matching products found.'}
+                        </p>
+                      )}
+                    </div>
+
                     {orderItems.length > 0 && (
-                      <div className="space-y-2 mt-2">
+                      <div className="space-y-2 mt-2 border-t pt-2">
+                        <Label className="text-xs font-semibold">Order Items</Label>
                         {orderItems.map(oi => (
                           <div key={oi.product_id} className="flex items-center justify-between text-sm p-2 bg-background rounded">
-                            <span>{oi.product_name}</span>
+                            <span className="font-medium">{oi.product_name}</span>
                             <div className="flex items-center gap-2">
                               <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => updateQuantity(oi.product_id, -1)}>
                                 <Minus className="h-3 w-3" />
@@ -496,12 +544,49 @@ const VisitsPage: React.FC = () => {
                               <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => updateQuantity(oi.product_id, 1)}>
                                 <Plus className="h-3 w-3" />
                               </Button>
-                              <span className="text-muted-foreground ml-2">₹{(oi.price * oi.quantity).toLocaleString()}</span>
+                              <span className="text-muted-foreground ml-2 w-20 text-right">₹{(oi.price * oi.quantity).toLocaleString()}</span>
                             </div>
                           </div>
                         ))}
-                        <div className="text-right font-bold text-sm">
-                          Total: ₹{orderItems.reduce((s, oi) => s + oi.price * oi.quantity, 0).toLocaleString()}
+
+                        <div className="text-right text-sm">
+                          <span className="text-muted-foreground">Subtotal: </span>
+                          <span className="font-medium">₹{subtotal.toLocaleString()}</span>
+                        </div>
+
+                        {/* Discount section */}
+                        <div className="p-2 bg-background rounded space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Percent className="h-4 w-4 text-muted-foreground" />
+                            <Label className="text-xs">Bulk Discount (max 8%)</Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min="0"
+                              max="8"
+                              step="0.5"
+                              value={discountPercent || ''}
+                              onChange={e => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setDiscountPercent(Math.min(8, Math.max(0, val)));
+                              }}
+                              placeholder="0"
+                              className="w-20 h-8 text-sm"
+                            />
+                            <span className="text-xs text-muted-foreground">%</span>
+                            {discountPercent > 0 && (
+                              <span className="text-xs text-success ml-auto">-₹{discountAmount.toLocaleString()}</span>
+                            )}
+                          </div>
+                          {discountPercent > 5 && (
+                            <p className="text-xs text-warning">High discount applied — ensure bulk order qualifies.</p>
+                          )}
+                        </div>
+
+                        <div className="flex justify-between text-sm font-bold pt-1 border-t">
+                          <span>Grand Total</span>
+                          <span>₹{grandTotal.toLocaleString()}</span>
                         </div>
                       </div>
                     )}

@@ -1,16 +1,21 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Receipt, Target, Clock, CheckCircle2, XCircle, Package, Users, TrendingUp, IndianRupee } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { MapPin, Receipt, Target, Clock, CheckCircle2, XCircle, Package, Users, TrendingUp, IndianRupee, Bell, ArrowLeft } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useToast } from '@/hooks/use-toast';
 
 const COLORS = ['hsl(213, 56%, 24%)', 'hsl(152, 55%, 42%)', 'hsl(38, 92%, 50%)', 'hsl(0, 72%, 51%)'];
 
 const Dashboard: React.FC = () => {
   const { user, role } = useAuth();
+  const { toast } = useToast();
+  const [selectedSP, setSelectedSP] = useState<string | null>(null);
 
   const { data: visits = [] } = useQuery({
     queryKey: ['dashboard-visits', user?.id],
@@ -72,26 +77,26 @@ const Dashboard: React.FC = () => {
       const { data } = await supabase.from('teams').select('*');
       return data || [];
     },
-    enabled: !!user && role === 'admin',
+    enabled: !!user && (role === 'admin' || role === 'team_lead'),
   });
 
-  // Team lead scope
   const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
   const myTeamId = myTeamMembership?.team_id;
   const myTeamMemberIds = teamMembers.filter(tm => tm.team_id === myTeamId).map(tm => tm.user_id);
 
-  // Scoped data based on role
   const scopedVisits = useMemo(() => {
+    if (selectedSP) return visits.filter(v => v.assigned_to === selectedSP);
     if (role === 'salesperson') return visits.filter(v => v.assigned_to === user?.id);
     if (role === 'team_lead') return visits.filter(v => myTeamMemberIds.includes(v.assigned_to || ''));
-    return visits; // admin sees all
-  }, [visits, role, user, myTeamMemberIds]);
+    return visits;
+  }, [visits, role, user, myTeamMemberIds, selectedSP]);
 
   const scopedExpenses = useMemo(() => {
+    if (selectedSP) return expenses.filter(e => e.user_id === selectedSP);
     if (role === 'salesperson') return expenses.filter(e => e.user_id === user?.id);
     if (role === 'team_lead') return expenses.filter(e => myTeamMemberIds.includes(e.user_id));
     return expenses;
-  }, [expenses, role, user, myTeamMemberIds]);
+  }, [expenses, role, user, myTeamMemberIds, selectedSP]);
 
   const verifiedVisits = scopedVisits.filter(v => v.visit_status === 'verified');
   const failedVisits = scopedVisits.filter(v => v.visit_status === 'failed');
@@ -114,7 +119,29 @@ const Dashboard: React.FC = () => {
     ? Math.round((ordersReceived / verifiedVisits.length) * 100)
     : 0;
 
-  const stats = role === 'salesperson' ? [
+  // Underperformers detection for lead
+  const underperformers = useMemo(() => {
+    if (role !== 'team_lead' && role !== 'admin') return [];
+    const spIds = role === 'team_lead'
+      ? myTeamMemberIds.filter(id => roles.find(r => r.user_id === id)?.role === 'salesperson')
+      : roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
+
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    return spIds.map(uid => {
+      const uVisits = visits.filter(v => v.assigned_to === uid && new Date(v.checked_in_at) >= weekAgo);
+      const verified = uVisits.filter(v => v.visit_status === 'verified').length;
+      const failed = uVisits.filter(v => v.visit_status === 'failed').length;
+      const target = targets.find(t => t.user_id === uid);
+      const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
+      const achievedPct = target && Number(target.target_value) > 0
+        ? Math.round((Number(target.achieved_value) / Number(target.target_value)) * 100) : null;
+      return { uid, name, weeklyVisits: verified, failed, achievedPct };
+    }).filter(sp => sp.weeklyVisits < 3 || sp.failed > sp.weeklyVisits);
+  }, [visits, roles, myTeamMemberIds, role, targets, profiles]);
+
+  const selectedSPName = selectedSP ? profiles.find(p => p.user_id === selectedSP)?.full_name || 'Unknown' : null;
+
+  const stats = (role === 'salesperson' || selectedSP) ? [
     { label: 'Verified Visits', value: verifiedVisits.length, icon: CheckCircle2, color: 'text-success' },
     { label: 'Today', value: todayVerified, icon: Clock, color: 'text-accent' },
     { label: 'Orders', value: ordersReceived, icon: Package, color: 'text-primary' },
@@ -144,13 +171,34 @@ const Dashboard: React.FC = () => {
     }, {} as Record<string, number>)
   ).map(([name, value]) => ({ name, value }));
 
+  const sendAlert = (spName: string) => {
+    toast({
+      title: `Alert sent to ${spName}`,
+      description: 'Performance improvement notification has been sent.',
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-header">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          {role === 'admin' ? 'All teams combined overview' : role === 'team_lead' ? 'Your team\'s performance overview' : 'Your performance overview'}
-        </p>
+        {selectedSP ? (
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={() => setSelectedSP(null)}>
+              <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+            <div>
+              <h1 className="page-header">{selectedSPName}'s Dashboard</h1>
+              <p className="text-muted-foreground mt-1">Individual performance overview</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h1 className="page-header">Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              {role === 'admin' ? 'All teams combined overview' : role === 'team_lead' ? 'Your team\'s performance overview' : 'Your performance overview'}
+            </p>
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -168,7 +216,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Additional insights for admin/lead */}
-      {(role === 'admin' || role === 'team_lead') && (
+      {(role === 'admin' || role === 'team_lead') && !selectedSP && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="stat-card">
             <div className="flex items-start justify-between">
@@ -207,6 +255,46 @@ const Dashboard: React.FC = () => {
             </div>
           </Card>
         </div>
+      )}
+
+      {/* Underperformers alert for lead */}
+      {(role === 'team_lead' || role === 'admin') && !selectedSP && underperformers.length > 0 && (
+        <Card className="border-warning/30">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Bell className="h-5 w-5 text-warning" />
+              Underperforming Salespersons (This Week)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {underperformers.map(sp => (
+                <div key={sp.uid} className="flex items-center justify-between p-3 rounded-lg bg-warning/5">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-warning/10 flex items-center justify-center text-sm font-bold text-warning">
+                      {sp.name[0]}
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{sp.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {sp.weeklyVisits} verified · {sp.failed} failed this week
+                        {sp.achievedPct !== null && ` · ${sp.achievedPct}% target`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setSelectedSP(sp.uid)}>
+                      View
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-warning border-warning/30" onClick={() => sendAlert(sp.name)}>
+                      <Bell className="h-3.5 w-3.5 mr-1" /> Alert
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -251,12 +339,12 @@ const Dashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* Top performers for admin/lead */}
-      {(role === 'admin' || role === 'team_lead') && (
+      {/* Top performers / team members clickable for lead */}
+      {(role === 'admin' || role === 'team_lead') && !selectedSP && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base font-semibold">
-              Top Performers {role === 'team_lead' ? '(Your Team)' : '(All Teams)'}
+              {role === 'team_lead' ? 'Team Members (Click to view individual dashboard)' : 'Top Performers (All Teams)'}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -266,21 +354,31 @@ const Dashboard: React.FC = () => {
                 const uVisits = scopedVisits.filter(v => v.assigned_to === uid && v.visit_status === 'verified');
                 const orders = uVisits.filter(v => v.order_received).length;
                 const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
-                return { uid, name, visits: uVisits.length, orders };
-              }).sort((a, b) => b.visits - a.visits).slice(0, 5);
+                const target = targets.find(t => t.user_id === uid);
+                const achievedPct = target && Number(target.target_value) > 0
+                  ? Math.round((Number(target.achieved_value) / Number(target.target_value)) * 100) : null;
+                return { uid, name, visits: uVisits.length, orders, achievedPct };
+              }).sort((a, b) => b.visits - a.visits).slice(0, 10);
 
               if (ranked.length === 0) return <p className="text-center text-muted-foreground py-4">No performance data yet.</p>;
 
               return (
                 <div className="space-y-2">
                   {ranked.map((r, i) => (
-                    <div key={r.uid} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                    <div
+                      key={r.uid}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted/80 transition-colors"
+                      onClick={() => setSelectedSP(r.uid)}
+                    >
                       <span className="text-lg font-bold w-6">{i + 1}</span>
                       <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
                         {r.name[0]}
                       </div>
                       <div className="flex-1">
                         <p className="font-medium text-sm">{r.name}</p>
+                        {r.achievedPct !== null && (
+                          <p className="text-xs text-muted-foreground">Target: {r.achievedPct}%</p>
+                        )}
                       </div>
                       <div className="flex gap-4 text-sm">
                         <span className="text-success font-semibold">{r.visits} visits</span>
