@@ -133,11 +133,13 @@ const Dashboard: React.FC = () => {
       const failed = uVisits.filter(v => v.visit_status === 'failed').length;
       const target = targets.find(t => t.user_id === uid);
       const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
+      const membership = teamMembers.find(tm => tm.user_id === uid);
+      const teamName = membership ? teams.find(t => t.id === membership.team_id)?.name || 'Unassigned' : 'Unassigned';
       const achievedPct = target && Number(target.target_value) > 0
         ? Math.round((Number(target.achieved_value) / Number(target.target_value)) * 100) : null;
-      return { uid, name, weeklyVisits: verified, failed, achievedPct };
+      return { uid, name, teamName, weeklyVisits: verified, failed, achievedPct };
     }).filter(sp => sp.weeklyVisits < 3 || sp.failed > sp.weeklyVisits);
-  }, [visits, roles, myTeamMemberIds, role, targets, profiles]);
+  }, [visits, roles, myTeamMemberIds, role, targets, profiles, teamMembers, teams]);
 
   const selectedSPName = selectedSP ? profiles.find(p => p.user_id === selectedSP)?.full_name || 'Unknown' : null;
 
@@ -194,8 +196,8 @@ const Dashboard: React.FC = () => {
         ) : (
           <>
             <h1 className="page-header">Dashboard</h1>
-            <p className="text-muted-foreground mt-1">
-              {role === 'admin' ? 'All teams combined overview' : role === 'team_lead' ? 'Your team\'s performance overview' : 'Your performance overview'}
+            <p className="text-muted-foreground text-sm mt-0.5">
+              {role === 'admin' ? 'All teams overview' : role === 'team_lead' ? 'Team performance' : 'Your performance'}
             </p>
           </>
         )}
@@ -277,7 +279,8 @@ const Dashboard: React.FC = () => {
                     <div>
                       <p className="font-medium text-sm">{sp.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {sp.weeklyVisits} verified · {sp.failed} failed this week
+                        <span className="font-medium text-primary/80">{sp.teamName}</span>
+                        {' · '}{sp.weeklyVisits} verified · {sp.failed} failed
                         {sp.achievedPct !== null && ` · ${sp.achievedPct}% target`}
                       </p>
                     </div>
