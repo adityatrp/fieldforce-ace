@@ -38,7 +38,7 @@
     --input: 214 20% 88%;
     --ring: 213 56% 24%;
 
-    --radius: 0.625rem;
+    --radius: 0.75rem;
 
     --sidebar-background: 213 56% 20%;
     --sidebar-foreground: 210 40% 96%;
@@ -92,20 +92,87 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+  }
+
+  /* Native-like scroll */
+  * {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  *::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
   }
 }
 
 @layer utilities {
   .field-card {
-    @apply bg-card rounded-xl border shadow-sm hover:shadow-md transition-shadow;
+    @apply bg-card rounded-2xl border shadow-sm active:scale-[0.98] transition-all duration-150;
   }
   
   .stat-card {
-    @apply bg-card rounded-xl border p-5 shadow-sm;
+    @apply bg-card rounded-2xl border p-4 shadow-sm;
   }
   
   .page-header {
-    @apply text-2xl font-bold tracking-tight text-foreground;
+    @apply text-xl font-bold tracking-tight text-foreground;
+  }
+
+  .native-btn {
+    @apply active:scale-95 transition-transform duration-100;
+  }
+
+  /* Safe area for mobile devices */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+@layer components {
+  /* Native-feel animations */
+  @keyframes slide-up {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  /* Bottom sheet style dialogs on mobile */
+  @media (max-width: 640px) {
+    [role="dialog"] {
+      border-radius: 1.25rem 1.25rem 0 0 !important;
+      bottom: 0 !important;
+      top: auto !important;
+      transform: none !important;
+      max-height: 92vh !important;
+      margin: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+    }
   }
 }
