@@ -133,11 +133,13 @@ const Dashboard: React.FC = () => {
       const failed = uVisits.filter(v => v.visit_status === 'failed').length;
       const target = targets.find(t => t.user_id === uid);
       const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
+      const membership = teamMembers.find(tm => tm.user_id === uid);
+      const teamName = membership ? teams.find(t => t.id === membership.team_id)?.name || 'Unassigned' : 'Unassigned';
       const achievedPct = target && Number(target.target_value) > 0
         ? Math.round((Number(target.achieved_value) / Number(target.target_value)) * 100) : null;
-      return { uid, name, weeklyVisits: verified, failed, achievedPct };
+      return { uid, name, teamName, weeklyVisits: verified, failed, achievedPct };
     }).filter(sp => sp.weeklyVisits < 3 || sp.failed > sp.weeklyVisits);
-  }, [visits, roles, myTeamMemberIds, role, targets, profiles]);
+  }, [visits, roles, myTeamMemberIds, role, targets, profiles, teamMembers, teams]);
 
   const selectedSPName = selectedSP ? profiles.find(p => p.user_id === selectedSP)?.full_name || 'Unknown' : null;
 
