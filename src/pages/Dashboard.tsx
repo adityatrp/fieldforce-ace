@@ -196,8 +196,8 @@ const Dashboard: React.FC = () => {
         ) : (
           <>
             <h1 className="page-header">Dashboard</h1>
-            <p className="text-muted-foreground mt-1">
-              {role === 'admin' ? 'All teams combined overview' : role === 'team_lead' ? 'Your team\'s performance overview' : 'Your performance overview'}
+            <p className="text-muted-foreground text-sm mt-0.5">
+              {role === 'admin' ? 'All teams overview' : role === 'team_lead' ? 'Team performance' : 'Your performance'}
             </p>
           </>
         )}
