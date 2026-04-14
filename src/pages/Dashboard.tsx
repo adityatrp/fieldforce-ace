@@ -279,7 +279,8 @@ const Dashboard: React.FC = () => {
                     <div>
                       <p className="font-medium text-sm">{sp.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {sp.weeklyVisits} verified · {sp.failed} failed this week
+                        <span className="font-medium text-primary/80">{sp.teamName}</span>
+                        {' · '}{sp.weeklyVisits} verified · {sp.failed} failed
                         {sp.achievedPct !== null && ` · ${sp.achievedPct}% target`}
                       </p>
                     </div>
