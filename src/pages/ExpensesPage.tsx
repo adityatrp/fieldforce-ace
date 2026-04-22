@@ -91,9 +91,9 @@ const ExpensesPage: React.FC = () => {
     mutationFn: async () => {
       let receiptUrl = '';
       if (receipt) {
-        const ext = receipt.name.split('.').pop();
-        const path = `receipts/${user!.id}/${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from('photos').upload(path, receipt);
+        const compressed = await compressImage(receipt);
+        const path = `receipts/${user!.id}/${Date.now()}.jpg`;
+        const { error: uploadError } = await supabase.storage.from('photos').upload(path, compressed);
         if (uploadError) {
           throw new Error(`Could not upload receipt: ${uploadError.message}`);
         }
@@ -273,7 +273,7 @@ const ExpensesPage: React.FC = () => {
                         Submitted by: {getSubmitterName(e.user_id)}
                       </p>
                     )}
-                    {approverName && (e.approval_status === 'approved' || e.approval_status === 'rejected') && (
+                    {canApprove && approverName && (e.approval_status === 'approved' || e.approval_status === 'rejected') && (
                       <p className="text-xs text-muted-foreground">
                         {e.approval_status === 'approved' ? 'Approved' : 'Rejected'} by: {approverName}
                       </p>
