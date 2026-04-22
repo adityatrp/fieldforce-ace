@@ -483,6 +483,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      users_share_team: {
+        Args: { _user_a: string; _user_b: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "salesperson" | "team_lead" | "admin"
