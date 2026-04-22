@@ -24,46 +24,64 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const GPS_THRESHOLD_METERS = 40;
+const GPS_THRESHOLD_METERS = 10;
+const GPS_TARGET_ACCURACY = 10; // meters - we want ±10m or better
+const GPS_HARD_TIMEOUT_MS = 25000; // give the GPS chip up to 25s to converge
 
-function getPreciseLocation(): Promise<{ lat: number; lng: number; accuracy: number }> {
+/**
+ * Uses watchPosition to continuously sample GPS until accuracy <= target (10m)
+ * or the hard timeout fires. Returns the best (lowest accuracy) reading seen.
+ * Rejects only if no reading was received at all.
+ */
+function getPreciseLocation(
+  targetAccuracy: number = GPS_TARGET_ACCURACY
+): Promise<{ lat: number; lng: number; accuracy: number }> {
   return new Promise((resolve, reject) => {
-    let bestResult: GeolocationPosition | null = null;
-    let attempts = 0;
-    const maxAttempts = 3;
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation not supported'));
+      return;
+    }
 
-    const tryGet = () => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          attempts++;
-          if (!bestResult || pos.coords.accuracy < bestResult.coords.accuracy) {
-            bestResult = pos;
-          }
-          if (pos.coords.accuracy <= 10 || attempts >= maxAttempts) {
-            resolve({
-              lat: bestResult!.coords.latitude,
-              lng: bestResult!.coords.longitude,
-              accuracy: bestResult!.coords.accuracy,
-            });
-          } else {
-            setTimeout(tryGet, 500);
-          }
-        },
-        (err) => {
-          if (bestResult) {
-            resolve({
-              lat: bestResult.coords.latitude,
-              lng: bestResult.coords.longitude,
-              accuracy: bestResult.coords.accuracy,
-            });
-          } else {
-            reject(err);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-      );
+    let best: GeolocationPosition | null = null;
+    let settled = false;
+    let watchId: number | null = null;
+
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      clearTimeout(hardTimer);
+      if (best) {
+        resolve({
+          lat: best.coords.latitude,
+          lng: best.coords.longitude,
+          accuracy: best.coords.accuracy,
+        });
+      } else if (err) {
+        reject(err);
+      } else {
+        reject(new Error('Unable to acquire GPS fix'));
+      }
     };
-    tryGet();
+
+    const hardTimer = setTimeout(() => finish(), GPS_HARD_TIMEOUT_MS);
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!best || pos.coords.accuracy < best.coords.accuracy) {
+          best = pos;
+        }
+        // Once we hit target accuracy, stop watching and resolve.
+        if (best.coords.accuracy <= targetAccuracy) {
+          finish();
+        }
+      },
+      (err) => {
+        // Only reject if we never got a reading; otherwise let timeout return best
+        if (!best) finish(err);
+      },
+      { enableHighAccuracy: true, timeout: GPS_HARD_TIMEOUT_MS, maximumAge: 0 }
+    );
   });
 }
 
