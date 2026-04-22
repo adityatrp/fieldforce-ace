@@ -836,11 +836,11 @@ const VisitsPage: React.FC = () => {
 
               <div className="space-y-2">
                 <Label className="text-xs">Photo (required)</Label>
-                <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setPhoto(e.target.files?.[0] || null)} />
-                <Button type="button" variant="outline" className="w-full h-14 gap-2 rounded-xl native-btn" onClick={() => fileInputRef.current?.click()}>
+                <Button type="button" variant="outline" className="w-full h-14 gap-2 rounded-xl native-btn" onClick={() => setMainCameraOpen(true)}>
                   <Camera className="h-5 w-5" />
-                  {photo ? photo.name : 'Take Photo'}
+                  {photo ? '✓ Photo Captured — Retake' : 'Open Camera'}
                 </Button>
+                <p className="text-[10px] text-muted-foreground">Live camera only. Gallery uploads are disabled.</p>
               </div>
 
               {/* Optional additional photos with captions (up to 5) */}
@@ -849,28 +849,14 @@ const VisitsPage: React.FC = () => {
                   <Label className="text-xs">Additional Photos (optional, up to 5)</Label>
                   <span className="text-[10px] text-muted-foreground">{extraPhotos.length}/5</span>
                 </div>
-                <input
-                  ref={extraPhotoInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f && extraPhotos.length < 5) {
-                      setExtraPhotos(prev => [...prev, { file: f, caption: '' }]);
-                    }
-                    if (extraPhotoInputRef.current) extraPhotoInputRef.current.value = '';
-                  }}
-                />
                 {extraPhotos.length < 5 && (
                   <Button
                     type="button"
                     variant="outline"
                     className="w-full h-10 gap-2 rounded-xl native-btn text-xs"
-                    onClick={() => extraPhotoInputRef.current?.click()}
+                    onClick={() => setExtraCameraOpen(true)}
                   >
-                    <Plus className="h-4 w-4" /> Add Another Photo
+                    <Camera className="h-4 w-4" /> Capture Another Photo
                   </Button>
                 )}
                 {extraPhotos.length > 0 && (
