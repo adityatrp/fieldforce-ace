@@ -818,10 +818,10 @@ const VisitsPage: React.FC = () => {
                 <Label className="text-xs">Your GPS Location</Label>
                 <Button type="button" variant="outline" className="w-full gap-2 h-11 rounded-xl native-btn" onClick={grabGPS} disabled={gpsStatus === 'loading'}>
                   <Navigation className="h-4 w-4" />
-                  {gpsStatus === 'loading' ? 'Getting precise location...' : gpsStatus === 'success' ? `📍 ${coords!.lat.toFixed(6)}, ${coords!.lng.toFixed(6)} (±${Math.round(coords!.accuracy)}m)` : 'Get My Location'}
+                  {gpsStatus === 'loading' ? 'Locking GPS (±10m)…' : gpsStatus === 'success' ? `📍 ${coords!.lat.toFixed(6)}, ${coords!.lng.toFixed(6)} (±${Math.round(coords!.accuracy)}m)` : 'Get My Location'}
                 </Button>
-                {gpsStatus === 'success' && coords!.accuracy > 40 && (
-                  <p className="text-xs text-warning">⚠️ Low accuracy (±{Math.round(coords!.accuracy)}m). Move to open area.</p>
+                {gpsStatus === 'success' && coords!.accuracy > GPS_TARGET_ACCURACY && (
+                  <p className="text-xs text-destructive">⚠️ Accuracy ±{Math.round(coords!.accuracy)}m — needs ±{GPS_TARGET_ACCURACY}m. Step outside / near a window and retry.</p>
                 )}
                 {gpsStatus === 'success' && selectedVisit.target_latitude && (
                   <p className="text-xs text-muted-foreground">
