@@ -760,12 +760,74 @@ const VisitsPage: React.FC = () => {
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs">Photo</Label>
+                <Label className="text-xs">Photo (required)</Label>
                 <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setPhoto(e.target.files?.[0] || null)} />
                 <Button type="button" variant="outline" className="w-full h-14 gap-2 rounded-xl native-btn" onClick={() => fileInputRef.current?.click()}>
                   <Camera className="h-5 w-5" />
                   {photo ? photo.name : 'Take Photo'}
                 </Button>
+              </div>
+
+              {/* Optional additional photos with captions (up to 5) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Additional Photos (optional, up to 5)</Label>
+                  <span className="text-[10px] text-muted-foreground">{extraPhotos.length}/5</span>
+                </div>
+                <input
+                  ref={extraPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f && extraPhotos.length < 5) {
+                      setExtraPhotos(prev => [...prev, { file: f, caption: '' }]);
+                    }
+                    if (extraPhotoInputRef.current) extraPhotoInputRef.current.value = '';
+                  }}
+                />
+                {extraPhotos.length < 5 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-10 gap-2 rounded-xl native-btn text-xs"
+                    onClick={() => extraPhotoInputRef.current?.click()}
+                  >
+                    <Plus className="h-4 w-4" /> Add Another Photo
+                  </Button>
+                )}
+                {extraPhotos.length > 0 && (
+                  <div className="space-y-2">
+                    {extraPhotos.map((ep, idx) => (
+                      <div key={idx} className="p-2 bg-muted/50 rounded-xl space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium truncate flex-1">📷 {ep.file.name}</p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 rounded-lg text-destructive"
+                            onClick={() => setExtraPhotos(prev => prev.filter((_, i) => i !== idx))}
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <Input
+                          value={ep.caption}
+                          onChange={e => {
+                            const v = e.target.value;
+                            setExtraPhotos(prev => prev.map((p, i) => i === idx ? { ...p, caption: v } : p));
+                          }}
+                          placeholder="Describe this photo..."
+                          className="h-8 text-xs rounded-lg"
+                          maxLength={200}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
