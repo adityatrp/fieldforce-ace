@@ -119,6 +119,8 @@ const VisitsPage: React.FC = () => {
   const [viewDialog, setViewDialog] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
+  const [extraPhotos, setExtraPhotos] = useState<{ file: File; caption: string }[]>([]);
+  const extraPhotoInputRef = useRef<HTMLInputElement>(null);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [orderReceived, setOrderReceived] = useState(false);
