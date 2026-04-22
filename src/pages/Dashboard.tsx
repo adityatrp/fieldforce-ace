@@ -154,20 +154,30 @@ const Dashboard: React.FC = () => {
   }, [role, adminTeamFilter, teamMembers]);
 
   const scopedVisits = useMemo(() => {
-    if (selectedSP) return visits.filter(v => v.assigned_to === selectedSP);
-    if (role === 'salesperson') return visits.filter(v => v.assigned_to === user?.id);
-    if (role === 'team_lead') return visits.filter(v => myTeamMemberIds.includes(v.assigned_to || ''));
-    if (role === 'admin' && adminTeamMemberIds) return visits.filter(v => adminTeamMemberIds.includes(v.assigned_to || ''));
-    return visits;
-  }, [visits, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds]);
+    let base: any[];
+    if (selectedSP) base = visits.filter(v => v.assigned_to === selectedSP);
+    else if (role === 'salesperson') base = visits.filter(v => v.assigned_to === user?.id);
+    else if (role === 'team_lead') base = visits.filter(v => myTeamMemberIds.includes(v.assigned_to || ''));
+    else if (role === 'admin' && adminTeamMemberIds) base = visits.filter(v => adminTeamMemberIds.includes(v.assigned_to || ''));
+    else base = visits;
+    if (period === 'all_time') return base;
+    // For pending visits, use created_at; for completed visits, use checked_in_at
+    return base.filter(v => {
+      const dateField = v.visit_status === 'assigned' ? v.created_at : v.checked_in_at;
+      return inPeriod(dateField);
+    });
+  }, [visits, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds, period, periodStart, periodEnd]);
 
   const scopedExpenses = useMemo(() => {
-    if (selectedSP) return expenses.filter(e => e.user_id === selectedSP);
-    if (role === 'salesperson') return expenses.filter(e => e.user_id === user?.id);
-    if (role === 'team_lead') return expenses.filter(e => myTeamMemberIds.includes(e.user_id));
-    if (role === 'admin' && adminTeamMemberIds) return expenses.filter(e => adminTeamMemberIds.includes(e.user_id));
-    return expenses;
-  }, [expenses, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds]);
+    let base: any[];
+    if (selectedSP) base = expenses.filter(e => e.user_id === selectedSP);
+    else if (role === 'salesperson') base = expenses.filter(e => e.user_id === user?.id);
+    else if (role === 'team_lead') base = expenses.filter(e => myTeamMemberIds.includes(e.user_id));
+    else if (role === 'admin' && adminTeamMemberIds) base = expenses.filter(e => adminTeamMemberIds.includes(e.user_id));
+    else base = expenses;
+    if (period === 'all_time') return base;
+    return base.filter(e => inPeriod(e.created_at));
+  }, [expenses, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds, period, periodStart, periodEnd]);
 
   const verifiedVisits = scopedVisits.filter(v => v.visit_status === 'verified');
   const failedVisits = scopedVisits.filter(v => v.visit_status === 'failed');
