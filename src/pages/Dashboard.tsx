@@ -96,19 +96,27 @@ const Dashboard: React.FC = () => {
   const myTeamId = myTeamMembership?.team_id;
   const myTeamMemberIds = teamMembers.filter(tm => tm.team_id === myTeamId).map(tm => tm.user_id);
 
+  // Apply admin team filter (only when admin and no SP drill-in)
+  const adminTeamMemberIds = useMemo(() => {
+    if (role !== 'admin' || adminTeamFilter === 'all') return null;
+    return teamMembers.filter(tm => tm.team_id === adminTeamFilter).map(tm => tm.user_id);
+  }, [role, adminTeamFilter, teamMembers]);
+
   const scopedVisits = useMemo(() => {
     if (selectedSP) return visits.filter(v => v.assigned_to === selectedSP);
     if (role === 'salesperson') return visits.filter(v => v.assigned_to === user?.id);
     if (role === 'team_lead') return visits.filter(v => myTeamMemberIds.includes(v.assigned_to || ''));
+    if (role === 'admin' && adminTeamMemberIds) return visits.filter(v => adminTeamMemberIds.includes(v.assigned_to || ''));
     return visits;
-  }, [visits, role, user, myTeamMemberIds, selectedSP]);
+  }, [visits, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds]);
 
   const scopedExpenses = useMemo(() => {
     if (selectedSP) return expenses.filter(e => e.user_id === selectedSP);
     if (role === 'salesperson') return expenses.filter(e => e.user_id === user?.id);
     if (role === 'team_lead') return expenses.filter(e => myTeamMemberIds.includes(e.user_id));
+    if (role === 'admin' && adminTeamMemberIds) return expenses.filter(e => adminTeamMemberIds.includes(e.user_id));
     return expenses;
-  }, [expenses, role, user, myTeamMemberIds, selectedSP]);
+  }, [expenses, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds]);
 
   const verifiedVisits = scopedVisits.filter(v => v.visit_status === 'verified');
   const failedVisits = scopedVisits.filter(v => v.visit_status === 'failed');
