@@ -128,6 +128,9 @@ const VisitsPage: React.FC = () => {
   const [discountPercent, setDiscountPercent] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Edit-order dialog state
+  const [editOrderDialog, setEditOrderDialog] = useState<string | null>(null);
+
   // Day start punch-in state
   const [dayStarted, setDayStarted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
