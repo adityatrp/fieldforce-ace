@@ -966,7 +966,7 @@ const TeamPage: React.FC = () => {
             )}
           </div>
           {/* Create User Dialog */}
-          <Dialog open={createUserOpen} onOpenChange={setCreateUserOpen}>
+          <Dialog open={createUserOpen} onOpenChange={(o) => { setCreateUserOpen(o); if (!o) { setNewUserTeamId(''); } }}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader><DialogTitle>Create New Salesperson</DialogTitle></DialogHeader>
               <div className="space-y-4 mt-2">
@@ -982,23 +982,89 @@ const TeamPage: React.FC = () => {
                   <Label>Password</Label>
                   <Input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} placeholder="Min 6 characters" minLength={6} />
                 </div>
-                <p className="text-xs text-muted-foreground">The user will be created with salesperson role. They can log in with these credentials.</p>
-                <Button className="w-full" disabled={!newUserEmail || !newUserPassword || !newUserName}
+                {role === 'admin' && (
+                  <div className="space-y-2">
+                    <Label>Assign to Team</Label>
+                    <Select value={newUserTeamId} onValueChange={setNewUserTeamId}>
+                      <SelectTrigger><SelectValue placeholder="Select a team" /></SelectTrigger>
+                      <SelectContent>
+                        {teams.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {teams.length === 0 && (
+                      <p className="text-xs text-warning">No teams found. Please create a team first in the Teams tab.</p>
+                    )}
+                  </div>
+                )}
+                {role === 'team_lead' && (
+                  <p className="text-xs text-muted-foreground">
+                    The new salesperson will be automatically added to your team
+                    {myTeamId ? ` (${getTeamNameById(myTeamId)}).` : '.'}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">The user will be created with salesperson role. They can log in with these credentials after email verification.</p>
+                <Button
+                  className="w-full"
+                  disabled={
+                    !newUserEmail || !newUserPassword || !newUserName || creatingUser ||
+                    (role === 'admin' && !newUserTeamId) ||
+                    (role === 'team_lead' && !myTeamId)
+                  }
                   onClick={async () => {
+                    setCreatingUser(true);
                     try {
-                      const { error } = await supabase.auth.signUp({
-                        email: newUserEmail, password: newUserPassword,
+                      const targetTeamId = role === 'admin' ? newUserTeamId : myTeamId;
+                      if (!targetTeamId) throw new Error('A team is required to create a salesperson.');
+
+                      // Preserve current admin/lead session — sign-up auto-logs-in the new user.
+                      const { data: sessionData } = await supabase.auth.getSession();
+                      const currentSession = sessionData.session;
+
+                      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                        email: newUserEmail,
+                        password: newUserPassword,
                         options: { data: { full_name: newUserName } },
                       });
-                      if (error) throw error;
-                      toast({ title: 'Salesperson created successfully', description: 'They can now log in after email verification.' });
-                      setCreateUserOpen(false); setNewUserEmail(''); setNewUserPassword(''); setNewUserName('');
+                      if (signUpError) throw signUpError;
+
+                      const newUserId = signUpData.user?.id;
+
+                      if (currentSession) {
+                        await supabase.auth.setSession({
+                          access_token: currentSession.access_token,
+                          refresh_token: currentSession.refresh_token,
+                        });
+                      }
+
+                      if (newUserId) {
+                        const { error: tmError } = await supabase.from('team_members').insert({
+                          team_id: targetTeamId,
+                          user_id: newUserId,
+                        });
+                        if (tmError && !tmError.message.toLowerCase().includes('duplicate')) {
+                          throw new Error(`User created, but team assignment failed: ${tmError.message}`);
+                        }
+                      }
+
+                      toast({
+                        title: 'Salesperson created successfully',
+                        description: `${newUserName} has been added to ${role === 'admin' ? teams.find(t => t.id === newUserTeamId)?.name : getTeamNameById(myTeamId!)}. They can log in after email verification.`,
+                      });
+                      setCreateUserOpen(false);
+                      setNewUserEmail(''); setNewUserPassword(''); setNewUserName(''); setNewUserTeamId('');
                       queryClient.invalidateQueries({ queryKey: ['team-profiles'] });
+                      queryClient.invalidateQueries({ queryKey: ['team-members'] });
                     } catch (err: any) {
-                      toast({ title: 'Failed to create user', description: err.message, variant: 'destructive' });
+                      toast({ title: 'Failed to create salesperson', description: err.message, variant: 'destructive' });
+                    } finally {
+                      setCreatingUser(false);
                     }
                   }}
-                >Create Salesperson</Button>
+                >
+                  {creatingUser ? 'Creating...' : 'Create Salesperson'}
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
