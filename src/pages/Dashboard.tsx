@@ -458,6 +458,11 @@ const Dashboard: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">Weekly Visit Results</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={240}>
