@@ -52,6 +52,8 @@ const TeamPage: React.FC = () => {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserName, setNewUserName] = useState('');
+  const [newUserTeamId, setNewUserTeamId] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
 
   // Admin: team management
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
