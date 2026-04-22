@@ -446,6 +446,7 @@ const VisitsPage: React.FC = () => {
     setCheckInDialog(null);
     setNotes('');
     setPhoto(null);
+    setExtraPhotos([]);
     setCoords(null);
     setGpsStatus('idle');
     setOrderReceived(false);
