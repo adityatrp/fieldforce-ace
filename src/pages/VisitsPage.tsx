@@ -642,7 +642,19 @@ const VisitsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Completed visits */}
+          {/* Upcoming scheduled visits */}
+          {upcomingVisits.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-sm font-semibold">Upcoming (Scheduled)</h3>
+              </div>
+              <div className="space-y-2">
+                {upcomingVisits.map(renderVisitCard)}
+              </div>
+            </div>
+          )}
+
           {completedVisits.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 px-1">
