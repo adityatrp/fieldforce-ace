@@ -14,11 +14,62 @@ import { useToast } from '@/hooks/use-toast';
 
 const COLORS = ['hsl(213, 56%, 24%)', 'hsl(152, 55%, 42%)', 'hsl(38, 92%, 50%)', 'hsl(0, 72%, 51%)'];
 
+type DashboardPeriod = 'this_week' | 'this_month' | 'last_month' | 'last_3_months' | 'all_time';
+
+const PERIOD_LABELS: Record<DashboardPeriod, string> = {
+  this_week: 'This Week',
+  this_month: 'This Month',
+  last_month: 'Last Month',
+  last_3_months: 'Past 3 Months',
+  all_time: 'All Time',
+};
+
+function getPeriodRange(period: DashboardPeriod): { start: Date | null; end: Date | null } {
+  const now = new Date();
+  if (period === 'all_time') return { start: null, end: null };
+  if (period === 'this_week') {
+    const start = new Date(now);
+    const day = start.getDay();
+    const diff = (day + 6) % 7;
+    start.setDate(start.getDate() - diff);
+    start.setHours(0, 0, 0, 0);
+    return { start, end: null };
+  }
+  if (period === 'this_month') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { start, end: null };
+  }
+  if (period === 'last_month') {
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { start, end };
+  }
+  if (period === 'last_3_months') {
+    const start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    return { start, end: null };
+  }
+  return { start: null, end: null };
+}
+
 const Dashboard: React.FC = () => {
   const { user, role } = useAuth();
   const { toast } = useToast();
   const [selectedSP, setSelectedSP] = useState<string | null>(null);
   const [adminTeamFilter, setAdminTeamFilter] = useState<string>('all');
+  const [period, setPeriod] = useState<DashboardPeriod>('this_month');
+
+  const { periodStart, periodEnd } = useMemo(() => {
+    const { start, end } = getPeriodRange(period);
+    return { periodStart: start, periodEnd: end };
+  }, [period]);
+
+  const inPeriod = (dateStr: string | null | undefined) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (periodStart && d < periodStart) return false;
+    if (periodEnd && d >= periodEnd) return false;
+    return true;
+  };
 
   const { data: visits = [] } = useQuery({
     queryKey: ['dashboard-visits', user?.id],
@@ -103,20 +154,30 @@ const Dashboard: React.FC = () => {
   }, [role, adminTeamFilter, teamMembers]);
 
   const scopedVisits = useMemo(() => {
-    if (selectedSP) return visits.filter(v => v.assigned_to === selectedSP);
-    if (role === 'salesperson') return visits.filter(v => v.assigned_to === user?.id);
-    if (role === 'team_lead') return visits.filter(v => myTeamMemberIds.includes(v.assigned_to || ''));
-    if (role === 'admin' && adminTeamMemberIds) return visits.filter(v => adminTeamMemberIds.includes(v.assigned_to || ''));
-    return visits;
-  }, [visits, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds]);
+    let base: any[];
+    if (selectedSP) base = visits.filter(v => v.assigned_to === selectedSP);
+    else if (role === 'salesperson') base = visits.filter(v => v.assigned_to === user?.id);
+    else if (role === 'team_lead') base = visits.filter(v => myTeamMemberIds.includes(v.assigned_to || ''));
+    else if (role === 'admin' && adminTeamMemberIds) base = visits.filter(v => adminTeamMemberIds.includes(v.assigned_to || ''));
+    else base = visits;
+    if (period === 'all_time') return base;
+    // For pending visits, use created_at; for completed visits, use checked_in_at
+    return base.filter(v => {
+      const dateField = v.visit_status === 'assigned' ? v.created_at : v.checked_in_at;
+      return inPeriod(dateField);
+    });
+  }, [visits, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds, period, periodStart, periodEnd]);
 
   const scopedExpenses = useMemo(() => {
-    if (selectedSP) return expenses.filter(e => e.user_id === selectedSP);
-    if (role === 'salesperson') return expenses.filter(e => e.user_id === user?.id);
-    if (role === 'team_lead') return expenses.filter(e => myTeamMemberIds.includes(e.user_id));
-    if (role === 'admin' && adminTeamMemberIds) return expenses.filter(e => adminTeamMemberIds.includes(e.user_id));
-    return expenses;
-  }, [expenses, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds]);
+    let base: any[];
+    if (selectedSP) base = expenses.filter(e => e.user_id === selectedSP);
+    else if (role === 'salesperson') base = expenses.filter(e => e.user_id === user?.id);
+    else if (role === 'team_lead') base = expenses.filter(e => myTeamMemberIds.includes(e.user_id));
+    else if (role === 'admin' && adminTeamMemberIds) base = expenses.filter(e => adminTeamMemberIds.includes(e.user_id));
+    else base = expenses;
+    if (period === 'all_time') return base;
+    return base.filter(e => inPeriod(e.created_at));
+  }, [expenses, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds, period, periodStart, periodEnd]);
 
   const verifiedVisits = scopedVisits.filter(v => v.visit_status === 'verified');
   const failedVisits = scopedVisits.filter(v => v.visit_status === 'failed');
@@ -266,18 +327,34 @@ const Dashboard: React.FC = () => {
     }).filter(x => x.targetVal > 0 && x.pct < 100);
   }, [isMonthEnd, role, myTeamMemberIds, adminTeamMemberIds, roles, targets, monthSalesByUser, profiles, teamMembers, teams]);
 
+  const periodSelector = (
+    <Select value={period} onValueChange={(v) => setPeriod(v as DashboardPeriod)}>
+      <SelectTrigger className="w-40 h-9">
+        <SelectValue placeholder="Period" />
+      </SelectTrigger>
+      <SelectContent>
+        {(Object.keys(PERIOD_LABELS) as DashboardPeriod[]).map(p => (
+          <SelectItem key={p} value={p}>{PERIOD_LABELS[p]}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <div className="space-y-6">
       <div>
         {selectedSP ? (
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => setSelectedSP(null)}>
-              <ArrowLeft className="h-4 w-4 mr-1" /> Back
-            </Button>
-            <div>
-              <h1 className="page-header">{selectedSPName}'s Dashboard</h1>
-              <p className="text-muted-foreground mt-1">Individual performance overview</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedSP(null)}>
+                <ArrowLeft className="h-4 w-4 mr-1" /> Back
+              </Button>
+              <div>
+                <h1 className="page-header">{selectedSPName}'s Dashboard</h1>
+                <p className="text-muted-foreground mt-1 text-sm">{PERIOD_LABELS[period]}</p>
+              </div>
             </div>
+            {periodSelector}
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -287,27 +364,31 @@ const Dashboard: React.FC = () => {
                 {role === 'admin'
                   ? (adminTeamFilter === 'all' ? 'All teams overview' : `${teams.find(t => t.id === adminTeamFilter)?.name || ''} team overview`)
                   : role === 'team_lead' ? 'Team performance' : 'Your performance'}
+                {' · '}{PERIOD_LABELS[period]}
               </p>
             </div>
-            {role === 'admin' && (
-              <Select value={adminTeamFilter} onValueChange={setAdminTeamFilter}>
-                <SelectTrigger className="w-48 h-9">
-                  <SelectValue placeholder="Filter by team" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Teams</SelectItem>
-                  {teams.map(t => (
-                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {periodSelector}
+              {role === 'admin' && (
+                <Select value={adminTeamFilter} onValueChange={setAdminTeamFilter}>
+                  <SelectTrigger className="w-48 h-9">
+                    <SelectValue placeholder="Filter by team" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Teams</SelectItem>
+                    {teams.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Sales target progress card */}
-      {scopedTargetTotal > 0 && (
+      {/* Sales target progress card — monthly target, only shown for this month / all time views */}
+      {scopedTargetTotal > 0 && (period === 'this_month' || period === 'all_time') && (
         <Card className="border-primary/20">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">

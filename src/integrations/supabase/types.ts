@@ -327,6 +327,30 @@ export type Database = {
         }
         Relationships: []
       }
+      visit_extra_photos: {
+        Row: {
+          caption: string
+          created_at: string
+          id: string
+          photo_path: string
+          visit_id: string
+        }
+        Insert: {
+          caption?: string
+          created_at?: string
+          id?: string
+          photo_path: string
+          visit_id: string
+        }
+        Update: {
+          caption?: string
+          created_at?: string
+          id?: string
+          photo_path?: string
+          visit_id?: string
+        }
+        Relationships: []
+      }
       visit_order_items: {
         Row: {
           created_at: string

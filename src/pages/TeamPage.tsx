@@ -52,6 +52,8 @@ const TeamPage: React.FC = () => {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserName, setNewUserName] = useState('');
+  const [newUserTeamId, setNewUserTeamId] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
 
   // Admin: team management
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -149,6 +151,16 @@ const TeamPage: React.FC = () => {
     enabled: !!viewDialog,
   });
 
+  const { data: visitExtraPhotos = [] } = useQuery({
+    queryKey: ['visit-extra-photos-team', viewDialog],
+    queryFn: async () => {
+      if (!viewDialog) return [];
+      const { data } = await supabase.from('visit_extra_photos').select('*').eq('visit_id', viewDialog).order('created_at');
+      return data || [];
+    },
+    enabled: !!viewDialog,
+  });
+
   // Team lead's team
   const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
   const myTeamId = myTeamMembership?.team_id;
@@ -197,23 +209,41 @@ const TeamPage: React.FC = () => {
 
   const geocodeAddress = async () => {
     if (!address.trim()) {
-      toast({ title: 'Please enter an address', description: 'An address is required to auto-detect coordinates.', variant: 'destructive' });
+      toast({ title: 'Please enter an address', description: 'Type a business name, landmark, or address to auto-detect coordinates.', variant: 'destructive' });
       return;
     }
     setGeocoding(true);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+      // Photon (OSM-backed) handles business names, POIs, and landmarks well — closer to Google-style search.
+      const photonRes = await fetch(
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=en`,
         { headers: { 'Accept': 'application/json' } }
       );
-      const results = await res.json();
+      const photonData = await photonRes.json();
+      const feature = photonData?.features?.[0];
+      if (feature) {
+        const [lon, lat] = feature.geometry.coordinates;
+        setTargetLat(parseFloat(lat).toFixed(6));
+        setTargetLng(parseFloat(lon).toFixed(6));
+        const props = feature.properties || {};
+        const label = [props.name, props.street, props.city, props.country].filter(Boolean).join(', ');
+        setLocationName(label || address);
+        toast({ title: 'Location found', description: label || address });
+        return;
+      }
+      // Fallback to Nominatim if Photon misses
+      const nomRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&addressdetails=1`,
+        { headers: { 'Accept': 'application/json' } }
+      );
+      const results = await nomRes.json();
       if (results.length > 0) {
         setTargetLat(parseFloat(results[0].lat).toFixed(6));
         setTargetLng(parseFloat(results[0].lon).toFixed(6));
         setLocationName(results[0].display_name?.split(',').slice(0, 3).join(',') || address);
         toast({ title: 'Location found', description: results[0].display_name?.split(',').slice(0, 2).join(',') });
       } else {
-        toast({ title: 'Address not found', description: 'Please try a more specific address or enter coordinates manually.', variant: 'destructive' });
+        toast({ title: 'Address not found', description: 'Please try a more specific name (e.g. include city) or enter coordinates manually.', variant: 'destructive' });
       }
     } catch {
       toast({ title: 'Geocoding failed', description: 'Unable to resolve address. Please check your connection and try again.', variant: 'destructive' });
@@ -676,6 +706,28 @@ const TeamPage: React.FC = () => {
                   />
                 </div>
               )}
+              {visitExtraPhotos.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Additional Photos ({visitExtraPhotos.length})</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {visitExtraPhotos.map((ep: any) => (
+                      <div key={ep.id} className="space-y-1">
+                        <SignedImage
+                          path={ep.photo_path}
+                          alt={ep.caption || 'Extra photo'}
+                          className="rounded-lg h-32 object-cover w-full cursor-pointer"
+                          onResolved={(u) => { (ep as any).__signedUrl = u; }}
+                          onClick={() => {
+                            const u = (ep as any).__signedUrl;
+                            if (u) window.open(u, '_blank');
+                          }}
+                        />
+                        {ep.caption && <p className="text-xs text-muted-foreground">{ep.caption}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {viewVisit.notes && (
                 <div><p className="text-sm text-muted-foreground">Notes</p><p className="text-sm">{viewVisit.notes}</p></div>
               )}
@@ -946,7 +998,7 @@ const TeamPage: React.FC = () => {
             )}
           </div>
           {/* Create User Dialog */}
-          <Dialog open={createUserOpen} onOpenChange={setCreateUserOpen}>
+          <Dialog open={createUserOpen} onOpenChange={(o) => { setCreateUserOpen(o); if (!o) { setNewUserTeamId(''); } }}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader><DialogTitle>Create New Salesperson</DialogTitle></DialogHeader>
               <div className="space-y-4 mt-2">
@@ -962,23 +1014,89 @@ const TeamPage: React.FC = () => {
                   <Label>Password</Label>
                   <Input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} placeholder="Min 6 characters" minLength={6} />
                 </div>
-                <p className="text-xs text-muted-foreground">The user will be created with salesperson role. They can log in with these credentials.</p>
-                <Button className="w-full" disabled={!newUserEmail || !newUserPassword || !newUserName}
+                {role === 'admin' && (
+                  <div className="space-y-2">
+                    <Label>Assign to Team</Label>
+                    <Select value={newUserTeamId} onValueChange={setNewUserTeamId}>
+                      <SelectTrigger><SelectValue placeholder="Select a team" /></SelectTrigger>
+                      <SelectContent>
+                        {teams.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {teams.length === 0 && (
+                      <p className="text-xs text-warning">No teams found. Please create a team first in the Teams tab.</p>
+                    )}
+                  </div>
+                )}
+                {role === 'team_lead' && (
+                  <p className="text-xs text-muted-foreground">
+                    The new salesperson will be automatically added to your team
+                    {myTeamId ? ` (${getTeamNameById(myTeamId)}).` : '.'}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">The user will be created with salesperson role. They can log in with these credentials after email verification.</p>
+                <Button
+                  className="w-full"
+                  disabled={
+                    !newUserEmail || !newUserPassword || !newUserName || creatingUser ||
+                    (role === 'admin' && !newUserTeamId) ||
+                    (role === 'team_lead' && !myTeamId)
+                  }
                   onClick={async () => {
+                    setCreatingUser(true);
                     try {
-                      const { error } = await supabase.auth.signUp({
-                        email: newUserEmail, password: newUserPassword,
+                      const targetTeamId = role === 'admin' ? newUserTeamId : myTeamId;
+                      if (!targetTeamId) throw new Error('A team is required to create a salesperson.');
+
+                      // Preserve current admin/lead session — sign-up auto-logs-in the new user.
+                      const { data: sessionData } = await supabase.auth.getSession();
+                      const currentSession = sessionData.session;
+
+                      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                        email: newUserEmail,
+                        password: newUserPassword,
                         options: { data: { full_name: newUserName } },
                       });
-                      if (error) throw error;
-                      toast({ title: 'Salesperson created successfully', description: 'They can now log in after email verification.' });
-                      setCreateUserOpen(false); setNewUserEmail(''); setNewUserPassword(''); setNewUserName('');
+                      if (signUpError) throw signUpError;
+
+                      const newUserId = signUpData.user?.id;
+
+                      if (currentSession) {
+                        await supabase.auth.setSession({
+                          access_token: currentSession.access_token,
+                          refresh_token: currentSession.refresh_token,
+                        });
+                      }
+
+                      if (newUserId) {
+                        const { error: tmError } = await supabase.from('team_members').insert({
+                          team_id: targetTeamId,
+                          user_id: newUserId,
+                        });
+                        if (tmError && !tmError.message.toLowerCase().includes('duplicate')) {
+                          throw new Error(`User created, but team assignment failed: ${tmError.message}`);
+                        }
+                      }
+
+                      toast({
+                        title: 'Salesperson created successfully',
+                        description: `${newUserName} has been added to ${role === 'admin' ? teams.find(t => t.id === newUserTeamId)?.name : getTeamNameById(myTeamId!)}. They can log in after email verification.`,
+                      });
+                      setCreateUserOpen(false);
+                      setNewUserEmail(''); setNewUserPassword(''); setNewUserName(''); setNewUserTeamId('');
                       queryClient.invalidateQueries({ queryKey: ['team-profiles'] });
+                      queryClient.invalidateQueries({ queryKey: ['team-members'] });
                     } catch (err: any) {
-                      toast({ title: 'Failed to create user', description: err.message, variant: 'destructive' });
+                      toast({ title: 'Failed to create salesperson', description: err.message, variant: 'destructive' });
+                    } finally {
+                      setCreatingUser(false);
                     }
                   }}
-                >Create Salesperson</Button>
+                >
+                  {creatingUser ? 'Creating...' : 'Create Salesperson'}
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
