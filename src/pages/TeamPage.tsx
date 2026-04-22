@@ -199,23 +199,41 @@ const TeamPage: React.FC = () => {
 
   const geocodeAddress = async () => {
     if (!address.trim()) {
-      toast({ title: 'Please enter an address', description: 'An address is required to auto-detect coordinates.', variant: 'destructive' });
+      toast({ title: 'Please enter an address', description: 'Type a business name, landmark, or address to auto-detect coordinates.', variant: 'destructive' });
       return;
     }
     setGeocoding(true);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+      // Photon (OSM-backed) handles business names, POIs, and landmarks well — closer to Google-style search.
+      const photonRes = await fetch(
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=en`,
         { headers: { 'Accept': 'application/json' } }
       );
-      const results = await res.json();
+      const photonData = await photonRes.json();
+      const feature = photonData?.features?.[0];
+      if (feature) {
+        const [lon, lat] = feature.geometry.coordinates;
+        setTargetLat(parseFloat(lat).toFixed(6));
+        setTargetLng(parseFloat(lon).toFixed(6));
+        const props = feature.properties || {};
+        const label = [props.name, props.street, props.city, props.country].filter(Boolean).join(', ');
+        setLocationName(label || address);
+        toast({ title: 'Location found', description: label || address });
+        return;
+      }
+      // Fallback to Nominatim if Photon misses
+      const nomRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&addressdetails=1`,
+        { headers: { 'Accept': 'application/json' } }
+      );
+      const results = await nomRes.json();
       if (results.length > 0) {
         setTargetLat(parseFloat(results[0].lat).toFixed(6));
         setTargetLng(parseFloat(results[0].lon).toFixed(6));
         setLocationName(results[0].display_name?.split(',').slice(0, 3).join(',') || address);
         toast({ title: 'Location found', description: results[0].display_name?.split(',').slice(0, 2).join(',') });
       } else {
-        toast({ title: 'Address not found', description: 'Please try a more specific address or enter coordinates manually.', variant: 'destructive' });
+        toast({ title: 'Address not found', description: 'Please try a more specific name (e.g. include city) or enter coordinates manually.', variant: 'destructive' });
       }
     } catch {
       toast({ title: 'Geocoding failed', description: 'Unable to resolve address. Please check your connection and try again.', variant: 'destructive' });
