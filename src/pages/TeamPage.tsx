@@ -534,14 +534,42 @@ const TeamPage: React.FC = () => {
       </div>
       {renderSalespersonSelect()}
       <div className="space-y-2">
-        <Label>Due Date (optional)</Label>
-        <Input type="datetime-local" value={dueDate} onChange={e => setDueDate(e.target.value)} disabled={noOverdue} />
+        <Label>Schedule / Due Date (optional — pick a future date)</Label>
+        <Input
+          type="datetime-local"
+          value={dueDate}
+          onChange={e => setDueDate(e.target.value)}
+          disabled={noOverdue}
+          min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+        />
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: 'Today 6 PM', d: () => { const x = new Date(); x.setHours(18, 0, 0, 0); return x; } },
+            { label: 'Tomorrow', d: () => { const x = new Date(); x.setDate(x.getDate() + 1); x.setHours(10, 0, 0, 0); return x; } },
+            { label: '+3 days', d: () => { const x = new Date(); x.setDate(x.getDate() + 3); x.setHours(10, 0, 0, 0); return x; } },
+            { label: 'Next week', d: () => { const x = new Date(); x.setDate(x.getDate() + 7); x.setHours(10, 0, 0, 0); return x; } },
+          ].map(p => (
+            <button
+              key={p.label}
+              type="button"
+              disabled={noOverdue}
+              onClick={() => {
+                const x = p.d();
+                const local = new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                setDueDate(local);
+              }}
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground active:scale-95 transition-transform disabled:opacity-50"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="noOverdue" checked={noOverdue} onChange={e => { setNoOverdue(e.target.checked); if (e.target.checked) setDueDate(''); }} className="h-4 w-4 rounded border-border" />
           <Label htmlFor="noOverdue" className="text-sm font-normal">No due date (open-ended)</Label>
         </div>
         {!noOverdue && dueDate && (
-          <p className="text-xs text-muted-foreground">If the salesperson does not check in by this time, the visit is auto-failed.</p>
+          <p className="text-xs text-muted-foreground">Visit becomes active for the salesperson and will auto-fail if no check-in occurs by this time.</p>
         )}
       </div>
       <div className="space-y-2">
