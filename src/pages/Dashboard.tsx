@@ -18,6 +18,7 @@ const Dashboard: React.FC = () => {
   const { user, role } = useAuth();
   const { toast } = useToast();
   const [selectedSP, setSelectedSP] = useState<string | null>(null);
+  const [adminTeamFilter, setAdminTeamFilter] = useState<string>('all');
 
   const { data: visits = [] } = useQuery({
     queryKey: ['dashboard-visits', user?.id],
@@ -80,6 +81,15 @@ const Dashboard: React.FC = () => {
       return data || [];
     },
     enabled: !!user && (role === 'admin' || role === 'team_lead'),
+  });
+
+  const { data: orderItems = [] } = useQuery({
+    queryKey: ['dashboard-order-items'],
+    queryFn: async () => {
+      const { data } = await supabase.from('visit_order_items').select('*');
+      return data || [];
+    },
+    enabled: !!user,
   });
 
   const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
