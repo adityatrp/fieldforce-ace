@@ -450,14 +450,47 @@ const TeamPage: React.FC = () => {
   };
 
   const grabCurrentLocation = () => {
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        setTargetLat(pos.coords.latitude.toFixed(6));
-        setTargetLng(pos.coords.longitude.toFixed(6));
-        toast({ title: 'Location captured', description: `Accuracy: ±${Math.round(pos.coords.accuracy)}m` });
+    if (!navigator.geolocation) {
+      toast({ title: 'GPS unavailable', description: 'Geolocation not supported on this device.', variant: 'destructive' });
+      return;
+    }
+    const TARGET = 10; // ±10m
+    const HARD_TIMEOUT = 25000;
+    let best: GeolocationPosition | null = null;
+    let done = false;
+    toast({ title: 'Locking GPS…', description: 'Hold still while we get a ±10m fix.' });
+
+    const finish = (errMsg?: string) => {
+      if (done) return;
+      done = true;
+      navigator.geolocation.clearWatch(watchId);
+      clearTimeout(timer);
+      if (best) {
+        setTargetLat(best.coords.latitude.toFixed(6));
+        setTargetLng(best.coords.longitude.toFixed(6));
+        const acc = Math.round(best.coords.accuracy);
+        if (best.coords.accuracy <= TARGET) {
+          toast({ title: '✅ Precise location captured', description: `Accuracy: ±${acc}m` });
+        } else {
+          toast({
+            title: '⚠️ Best available fix',
+            description: `Accuracy: ±${acc}m (target ±${TARGET}m). Move to open sky and retry for better precision.`,
+            variant: 'destructive',
+          });
+        }
+      } else {
+        toast({ title: 'GPS Error', description: errMsg || 'Unable to capture location. Check GPS permissions.', variant: 'destructive' });
+      }
+    };
+
+    const timer = setTimeout(() => finish(), HARD_TIMEOUT);
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
+        if (best.coords.accuracy <= TARGET) finish();
       },
-      () => toast({ title: 'GPS Error', description: 'Unable to capture your current location. Please check GPS permissions.', variant: 'destructive' }),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+      (err) => { if (!best) finish(err.message); },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: HARD_TIMEOUT }
     );
   };
 
