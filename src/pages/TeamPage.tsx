@@ -31,6 +31,7 @@ const TeamPage: React.FC = () => {
   const [targetLng, setTargetLng] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
   const [notes, setNotes] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [noOverdue, setNoOverdue] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
@@ -256,7 +257,7 @@ const TeamPage: React.FC = () => {
     setCustomerName(''); setLocationName(''); setAddress('');
     setTargetLat(''); setTargetLng(''); setAssignedTo('');
     setNotes(''); setEditVisitId(null); setSpSearch('');
-    setDueDate(''); setNoOverdue(false);
+    setScheduledAt(''); setDueDate(''); setNoOverdue(false);
   };
 
   const assignVisitMutation = useMutation({
@@ -266,6 +267,10 @@ const TeamPage: React.FC = () => {
       if (isNaN(lat) || isNaN(lng)) throw new Error('Please provide valid GPS coordinates.');
       if (!assignedTo) throw new Error('Please select a salesperson to assign this visit to.');
       const dueIso = !noOverdue && dueDate ? new Date(dueDate).toISOString() : null;
+      const scheduledIso = scheduledAt ? new Date(scheduledAt).toISOString() : null;
+      if (dueIso && scheduledIso && new Date(dueIso) < new Date(scheduledIso)) {
+        throw new Error('Due date cannot be before the scheduled date.');
+      }
       // If editing a failed visit, treat as reassignment: create new visit and link parent.
       const isReassignFromFailed = !!editVisitId && visits.find(v => v.id === editVisitId)?.visit_status === 'failed';
 
@@ -275,6 +280,7 @@ const TeamPage: React.FC = () => {
         assigned_to: assignedTo, assigned_by: user!.id,
         user_id: user!.id, visit_status: 'assigned', notes,
         due_date: dueIso,
+        scheduled_at: scheduledIso,
       } as any).select().single();
       if (error) throw error;
 
@@ -297,12 +303,17 @@ const TeamPage: React.FC = () => {
       const lng = parseFloat(targetLng);
       if (isNaN(lat) || isNaN(lng)) throw new Error('Please provide valid GPS coordinates.');
       const dueIso = !noOverdue && dueDate ? new Date(dueDate).toISOString() : null;
+      const scheduledIso = scheduledAt ? new Date(scheduledAt).toISOString() : null;
+      if (dueIso && scheduledIso && new Date(dueIso) < new Date(scheduledIso)) {
+        throw new Error('Due date cannot be before the scheduled date.');
+      }
       const { error } = await supabase.from('visits').update({
         customer_name: customerName, location_name: locationName,
         target_latitude: lat, target_longitude: lng,
         assigned_to: assignedTo, notes,
         visit_status: 'assigned',
         due_date: dueIso,
+        scheduled_at: scheduledIso,
       } as any).eq('id', editVisitId);
       if (error) throw error;
     },
@@ -433,6 +444,8 @@ const TeamPage: React.FC = () => {
     const dd = (visit as any).due_date;
     setDueDate(dd ? new Date(dd).toISOString().slice(0, 16) : '');
     setNoOverdue(!dd);
+    const sa = (visit as any).scheduled_at;
+    setScheduledAt(sa ? new Date(sa).toISOString().slice(0, 16) : '');
     setEditOpen(true);
   };
 
@@ -534,20 +547,52 @@ const TeamPage: React.FC = () => {
       </div>
       {renderSalespersonSelect()}
       <div className="space-y-2">
-        <Label>Schedule / Due Date (optional — pick a future date)</Label>
+        <Label>Schedule For (optional — visit appears active from this date)</Label>
+        <Input
+          type="datetime-local"
+          value={scheduledAt}
+          onChange={e => setScheduledAt(e.target.value)}
+          min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+          className="w-full"
+        />
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: 'Now', d: () => new Date() },
+            { label: 'Tomorrow 9 AM', d: () => { const x = new Date(); x.setDate(x.getDate() + 1); x.setHours(9, 0, 0, 0); return x; } },
+            { label: '+3 days', d: () => { const x = new Date(); x.setDate(x.getDate() + 3); x.setHours(9, 0, 0, 0); return x; } },
+            { label: 'Next week', d: () => { const x = new Date(); x.setDate(x.getDate() + 7); x.setHours(9, 0, 0, 0); return x; } },
+          ].map(p => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => {
+                const x = p.d();
+                const local = new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                setScheduledAt(local);
+              }}
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground active:scale-95 transition-transform"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label>Due Date (optional — auto-fails if not done by then)</Label>
         <Input
           type="datetime-local"
           value={dueDate}
           onChange={e => setDueDate(e.target.value)}
           disabled={noOverdue}
-          min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+          min={(scheduledAt || new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16))}
+          className="w-full"
         />
         <div className="flex flex-wrap gap-2">
           {[
             { label: 'Today 6 PM', d: () => { const x = new Date(); x.setHours(18, 0, 0, 0); return x; } },
-            { label: 'Tomorrow', d: () => { const x = new Date(); x.setDate(x.getDate() + 1); x.setHours(10, 0, 0, 0); return x; } },
-            { label: '+3 days', d: () => { const x = new Date(); x.setDate(x.getDate() + 3); x.setHours(10, 0, 0, 0); return x; } },
-            { label: 'Next week', d: () => { const x = new Date(); x.setDate(x.getDate() + 7); x.setHours(10, 0, 0, 0); return x; } },
+            { label: 'Tomorrow 6 PM', d: () => { const x = new Date(); x.setDate(x.getDate() + 1); x.setHours(18, 0, 0, 0); return x; } },
+            { label: '+3 days', d: () => { const x = new Date(); x.setDate(x.getDate() + 3); x.setHours(18, 0, 0, 0); return x; } },
+            { label: '+1 week', d: () => { const x = new Date(); x.setDate(x.getDate() + 7); x.setHours(18, 0, 0, 0); return x; } },
           ].map(p => (
             <button
               key={p.label}
@@ -569,7 +614,7 @@ const TeamPage: React.FC = () => {
           <Label htmlFor="noOverdue" className="text-sm font-normal">No due date (open-ended)</Label>
         </div>
         {!noOverdue && dueDate && (
-          <p className="text-xs text-muted-foreground">Visit becomes active for the salesperson and will auto-fail if no check-in occurs by this time.</p>
+          <p className="text-xs text-muted-foreground">Visit will auto-fail if no check-in by this time.</p>
         )}
       </div>
       <div className="space-y-2">

@@ -187,8 +187,13 @@ const VisitsPage: React.FC = () => {
 
   // Separate pending and completed visits, with overdue-first then optimized order
   const pendingVisits = useMemo(() => {
-    const pending = visits.filter(v => v.visit_status === 'assigned' && v.target_latitude && v.target_longitude);
     const now = Date.now();
+    // Active pending: assigned + has coords + scheduled_at <= now (or no schedule)
+    const pending = visits.filter((v: any) =>
+      v.visit_status === 'assigned' &&
+      v.target_latitude && v.target_longitude &&
+      (!v.scheduled_at || new Date(v.scheduled_at).getTime() <= now)
+    );
     const overdueToday = pending.filter((v: any) => v.due_date && new Date(v.due_date).getTime() <= now + 24 * 3600 * 1000);
     const others = pending.filter((v: any) => !v.due_date || new Date(v.due_date).getTime() > now + 24 * 3600 * 1000);
     const sortedOverdue = [...overdueToday].sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
@@ -197,6 +202,16 @@ const VisitsPage: React.FC = () => {
       : others;
     return [...sortedOverdue, ...optimized];
   }, [visits, currentLocation, dayStarted]);
+
+  // Future scheduled visits (not yet active)
+  const upcomingVisits = useMemo(() => {
+    const now = Date.now();
+    return visits.filter((v: any) =>
+      v.visit_status === 'assigned' &&
+      v.scheduled_at &&
+      new Date(v.scheduled_at).getTime() > now
+    ).sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  }, [visits]);
 
   const completedVisits = useMemo(() => {
     return visits.filter(v => v.visit_status !== 'assigned');
@@ -474,6 +489,8 @@ const VisitsPage: React.FC = () => {
     const now = Date.now();
     const isOverdueToday = dueMs && dueMs <= now + 24 * 3600 * 1000 && v.visit_status === 'assigned';
     const isPastDue = dueMs && dueMs < now && v.visit_status === 'assigned';
+    const scheduledMs = v.scheduled_at ? new Date(v.scheduled_at).getTime() : null;
+    const isUpcoming = scheduledMs && scheduledMs > now && v.visit_status === 'assigned';
 
     return (
       <Card key={v.id} className={`field-card ${isOverdueToday ? 'border-warning/50 bg-warning/5' : ''}`}>
@@ -494,6 +511,11 @@ const VisitsPage: React.FC = () => {
                 {isOverdueToday && (
                   <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] px-1.5 py-0">
                     {isPastDue ? '⚠ Past due' : '⏰ Due today'}
+                  </Badge>
+                )}
+                {isUpcoming && (
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[10px] px-1.5 py-0">
+                    📅 {new Date(scheduledMs).toLocaleDateString()}
                   </Badge>
                 )}
               </div>
@@ -526,7 +548,7 @@ const VisitsPage: React.FC = () => {
                   Edit Order
                 </Button>
               )}
-              {v.visit_status === 'assigned' && role === 'salesperson' && (
+              {v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming && (
                 <Button size="sm" className="h-9 native-btn rounded-xl text-xs" onClick={() => setCheckInDialog(v.id)}>
                   <Navigation className="h-3.5 w-3.5 mr-1" />
                   Check In
@@ -627,7 +649,19 @@ const VisitsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Completed visits */}
+          {/* Upcoming scheduled visits */}
+          {upcomingVisits.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-sm font-semibold">Upcoming (Scheduled)</h3>
+              </div>
+              <div className="space-y-2">
+                {upcomingVisits.map(renderVisitCard)}
+              </div>
+            </div>
+          )}
+
           {completedVisits.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 px-1">
