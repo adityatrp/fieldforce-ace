@@ -187,8 +187,13 @@ const VisitsPage: React.FC = () => {
 
   // Separate pending and completed visits, with overdue-first then optimized order
   const pendingVisits = useMemo(() => {
-    const pending = visits.filter(v => v.visit_status === 'assigned' && v.target_latitude && v.target_longitude);
     const now = Date.now();
+    // Active pending: assigned + has coords + scheduled_at <= now (or no schedule)
+    const pending = visits.filter((v: any) =>
+      v.visit_status === 'assigned' &&
+      v.target_latitude && v.target_longitude &&
+      (!v.scheduled_at || new Date(v.scheduled_at).getTime() <= now)
+    );
     const overdueToday = pending.filter((v: any) => v.due_date && new Date(v.due_date).getTime() <= now + 24 * 3600 * 1000);
     const others = pending.filter((v: any) => !v.due_date || new Date(v.due_date).getTime() > now + 24 * 3600 * 1000);
     const sortedOverdue = [...overdueToday].sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
@@ -197,6 +202,16 @@ const VisitsPage: React.FC = () => {
       : others;
     return [...sortedOverdue, ...optimized];
   }, [visits, currentLocation, dayStarted]);
+
+  // Future scheduled visits (not yet active)
+  const upcomingVisits = useMemo(() => {
+    const now = Date.now();
+    return visits.filter((v: any) =>
+      v.visit_status === 'assigned' &&
+      v.scheduled_at &&
+      new Date(v.scheduled_at).getTime() > now
+    ).sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  }, [visits]);
 
   const completedVisits = useMemo(() => {
     return visits.filter(v => v.visit_status !== 'assigned');
