@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft, Target, Bell } from 'lucide-react';
+import SignedImage from '@/components/SignedImage';
 
 const TeamPage: React.FC = () => {
   const { user, role } = useAuth();
@@ -625,7 +626,16 @@ const TeamPage: React.FC = () => {
               {viewVisit.photo_url && (
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">Visit Photo</p>
-                  <img src={viewVisit.photo_url} alt="Visit photo" className="rounded-lg max-h-64 object-cover w-full cursor-pointer" onClick={() => window.open(viewVisit.photo_url!, '_blank')} />
+                  <SignedImage
+                    path={viewVisit.photo_url}
+                    alt="Visit photo"
+                    className="rounded-lg max-h-64 object-cover w-full cursor-pointer"
+                    onResolved={(u) => { (viewVisit as any).__signedPhotoUrl = u; }}
+                    onClick={() => {
+                      const u = (viewVisit as any).__signedPhotoUrl;
+                      if (u) window.open(u, '_blank');
+                    }}
+                  />
                 </div>
               )}
               {viewVisit.notes && (

@@ -92,11 +92,12 @@ const ExpensesPage: React.FC = () => {
       if (receipt) {
         const ext = receipt.name.split('.').pop();
         const path = `receipts/${user!.id}/${Date.now()}.${ext}`;
-        const { error } = await supabase.storage.from('photos').upload(path, receipt);
-        if (!error) {
-          const { data: urlData } = supabase.storage.from('photos').getPublicUrl(path);
-          receiptUrl = urlData.publicUrl;
+        const { error: uploadError } = await supabase.storage.from('photos').upload(path, receipt);
+        if (uploadError) {
+          throw new Error(`Could not upload receipt: ${uploadError.message}`);
         }
+        // Store the storage path; viewers resolve to short-lived signed URLs.
+        receiptUrl = path;
       }
 
       const amt = parseFloat(amount);
