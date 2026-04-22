@@ -144,7 +144,7 @@ const VisitsPage: React.FC = () => {
   const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [orderReceived, setOrderReceived] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
-  const [orderItems, setOrderItems] = useState<Record<string, number>>({});
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [discountPercent, setDiscountPercent] = useState(0);
   const [mainCameraOpen, setMainCameraOpen] = useState(false);
