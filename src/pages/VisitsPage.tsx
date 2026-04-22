@@ -384,9 +384,13 @@ const VisitsPage: React.FC = () => {
     const distFromCurrent = currentLocation && v.target_latitude
       ? Math.round(getDistanceMeters(currentLocation.lat, currentLocation.lng, v.target_latitude, v.target_longitude))
       : null;
+    const dueMs = v.due_date ? new Date(v.due_date).getTime() : null;
+    const now = Date.now();
+    const isOverdueToday = dueMs && dueMs <= now + 24 * 3600 * 1000 && v.visit_status === 'assigned';
+    const isPastDue = dueMs && dueMs < now && v.visit_status === 'assigned';
 
     return (
-      <Card key={v.id} className="field-card">
+      <Card key={v.id} className={`field-card ${isOverdueToday ? 'border-warning/50 bg-warning/5' : ''}`}>
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
             <div className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 ${v.visit_status === 'verified' ? 'bg-success/10' : v.visit_status === 'failed' ? 'bg-destructive/10' : 'bg-accent/10'}`}>
@@ -401,14 +405,24 @@ const VisitsPage: React.FC = () => {
                     <Package className="h-3 w-3 mr-0.5" /> Order
                   </Badge>
                 )}
+                {isOverdueToday && (
+                  <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] px-1.5 py-0">
+                    {isPastDue ? '⚠ Past due' : '⏰ Due today'}
+                  </Badge>
+                )}
               </div>
               {v.location_name && (
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">📍 {v.location_name}</p>
               )}
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <p className="text-xs text-muted-foreground">
                   {new Date(v.created_at).toLocaleDateString()}
                 </p>
+                {dueMs && (
+                  <p className="text-xs text-muted-foreground">
+                    · Due {new Date(dueMs).toLocaleDateString()}
+                  </p>
+                )}
                 {distFromCurrent !== null && v.visit_status === 'assigned' && (
                   <span className="text-xs text-primary font-medium">{distFromCurrent < 1000 ? `${distFromCurrent}m away` : `${(distFromCurrent / 1000).toFixed(1)}km away`}</span>
                 )}
@@ -418,6 +432,12 @@ const VisitsPage: React.FC = () => {
               {(v.visit_status === 'verified' || v.visit_status === 'failed') && (
                 <Button size="sm" variant="ghost" className="h-9 w-9 p-0 native-btn" onClick={() => setViewDialog(v.id)}>
                   <Eye className="h-4 w-4" />
+                </Button>
+              )}
+              {v.visit_status === 'verified' && role === 'salesperson' && (
+                <Button size="sm" variant="outline" className="h-9 native-btn rounded-xl text-xs" onClick={() => openEditOrder(v)}>
+                  <Package className="h-3.5 w-3.5 mr-1" />
+                  Edit Order
                 </Button>
               )}
               {v.visit_status === 'assigned' && role === 'salesperson' && (
