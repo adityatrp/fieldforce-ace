@@ -444,6 +444,8 @@ const TeamPage: React.FC = () => {
     const dd = (visit as any).due_date;
     setDueDate(dd ? new Date(dd).toISOString().slice(0, 16) : '');
     setNoOverdue(!dd);
+    const sa = (visit as any).scheduled_at;
+    setScheduledAt(sa ? new Date(sa).toISOString().slice(0, 16) : '');
     setEditOpen(true);
   };
 
