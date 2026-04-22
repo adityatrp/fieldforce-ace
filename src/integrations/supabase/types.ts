@@ -412,6 +412,7 @@ export type Database = {
           order_received: boolean | null
           photo_url: string | null
           reassigned_to_visit_id: string | null
+          scheduled_at: string | null
           target_latitude: number | null
           target_longitude: number | null
           updated_at: string
@@ -436,6 +437,7 @@ export type Database = {
           order_received?: boolean | null
           photo_url?: string | null
           reassigned_to_visit_id?: string | null
+          scheduled_at?: string | null
           target_latitude?: number | null
           target_longitude?: number | null
           updated_at?: string
@@ -460,6 +462,7 @@ export type Database = {
           order_received?: boolean | null
           photo_url?: string | null
           reassigned_to_visit_id?: string | null
+          scheduled_at?: string | null
           target_latitude?: number | null
           target_longitude?: number | null
           updated_at?: string
