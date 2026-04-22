@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/hooks/use-toast';
 import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye, Plus, Minus, Search, Percent, Play, LocateFixed, Route } from 'lucide-react';
 import SignedImage from '@/components/SignedImage';
+import { compressImage } from '@/lib/imageCompress';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -247,9 +248,9 @@ const VisitsPage: React.FC = () => {
 
       let photoUrl = '';
       if (photo) {
-        const ext = photo.name.split('.').pop();
-        const path = `visits/${user!.id}/${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from('photos').upload(path, photo);
+        const compressed = await compressImage(photo);
+        const path = `visits/${user!.id}/${Date.now()}.jpg`;
+        const { error: uploadError } = await supabase.storage.from('photos').upload(path, compressed);
         if (uploadError) {
           throw new Error(`Could not upload visit photo: ${uploadError.message}`);
         }
