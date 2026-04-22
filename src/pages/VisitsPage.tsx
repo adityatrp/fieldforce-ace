@@ -360,6 +360,58 @@ const VisitsPage: React.FC = () => {
     },
   });
 
+
+  const editOrderMutation = useMutation({
+    mutationFn: async (visitId: string) => {
+      // Replace existing items with the new cart
+      await supabase.from('visit_order_items').delete().eq('visit_id', visitId);
+      const finalDiscount = discountPercent;
+      if (orderItems.length > 0) {
+        const discountMultiplier = 1 - (finalDiscount / 100);
+        const items = orderItems.map(oi => ({
+          visit_id: visitId,
+          product_id: oi.product_id,
+          quantity: oi.quantity,
+          price_at_order: Math.round(oi.price * discountMultiplier * 100) / 100,
+        }));
+        const { error: insErr } = await supabase.from('visit_order_items').insert(items);
+        if (insErr) throw insErr;
+      }
+      const { error } = await supabase.from('visits').update({
+        order_received: orderItems.length > 0,
+        order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
+      }).eq('id', visitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
+      queryClient.invalidateQueries({ queryKey: ['visit-order-items'] });
+      toast({ title: 'Order updated successfully' });
+      setEditOrderDialog(null);
+      setOrderItems([]); setOrderNotes(''); setDiscountPercent(0); setProductSearch('');
+    },
+    onError: (err: Error) => toast({ title: 'Failed to update order', description: err.message, variant: 'destructive' }),
+  });
+
+  const openEditOrder = async (v: any) => {
+    setEditOrderDialog(v.id);
+    const { data: existing } = await supabase
+      .from('visit_order_items')
+      .select('*, products(name, price)')
+      .eq('visit_id', v.id);
+    if (existing) {
+      setOrderItems(existing.map((it: any) => ({
+        product_id: it.product_id,
+        product_name: it.products?.name || 'Product',
+        quantity: Number(it.quantity),
+        price: Number(it.price_at_order),
+      })));
+    }
+    setOrderNotes((v.order_notes || '').replace(/\s*\|\s*Discount:.*/, ''));
+    setDiscountPercent(0);
+    setProductSearch('');
+  };
+
   const resetDialog = () => {
     setCheckInDialog(null);
     setNotes('');
