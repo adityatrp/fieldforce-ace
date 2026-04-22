@@ -280,14 +280,52 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         ) : (
-          <>
-            <h1 className="page-header">Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              {role === 'admin' ? 'All teams overview' : role === 'team_lead' ? 'Team performance' : 'Your performance'}
-            </p>
-          </>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="page-header">Dashboard</h1>
+              <p className="text-muted-foreground text-sm mt-0.5">
+                {role === 'admin'
+                  ? (adminTeamFilter === 'all' ? 'All teams overview' : `${teams.find(t => t.id === adminTeamFilter)?.name || ''} team overview`)
+                  : role === 'team_lead' ? 'Team performance' : 'Your performance'}
+              </p>
+            </div>
+            {role === 'admin' && (
+              <Select value={adminTeamFilter} onValueChange={setAdminTeamFilter}>
+                <SelectTrigger className="w-48 h-9">
+                  <SelectValue placeholder="Filter by team" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Teams</SelectItem>
+                  {teams.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Sales target progress card */}
+      {scopedTargetTotal > 0 && (
+        <Card className="border-primary/20">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                <p className="font-semibold text-sm">Sales Target Achieved (This Month)</p>
+              </div>
+              <p className="text-sm font-bold">
+                ₹{Math.round(scopedSalesAchieved).toLocaleString()} / ₹{scopedTargetTotal.toLocaleString()}
+              </p>
+            </div>
+            <Progress value={Math.min(100, scopedTargetPct)} className="h-2" />
+            <p className={`text-xs mt-2 font-medium ${scopedTargetPct >= 100 ? 'text-success' : 'text-muted-foreground'}`}>
+              {scopedTargetPct}% achieved {scopedTargetPct >= 100 ? '🎯' : ''}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map(s => (
