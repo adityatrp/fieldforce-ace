@@ -295,9 +295,10 @@ const TeamPage: React.FC = () => {
       if (isNaN(price) || price < 0) throw new Error('Please enter a valid price.');
       const { error } = await supabase.from('products').insert({
         name: productName, unit: productUnit, price,
+        sku: productSKU, category: productCategory, description: productDescription,
         created_by: user!.id,
         team_id: teamId,
-      });
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -399,6 +400,9 @@ const TeamPage: React.FC = () => {
     setAssignedTo(visit.assigned_to || '');
     setNotes(visit.notes || '');
     setAddress('');
+    const dd = (visit as any).due_date;
+    setDueDate(dd ? new Date(dd).toISOString().slice(0, 16) : '');
+    setNoOverdue(!dd);
     setEditOpen(true);
   };
 
