@@ -151,6 +151,16 @@ const TeamPage: React.FC = () => {
     enabled: !!viewDialog,
   });
 
+  const { data: visitExtraPhotos = [] } = useQuery({
+    queryKey: ['visit-extra-photos-team', viewDialog],
+    queryFn: async () => {
+      if (!viewDialog) return [];
+      const { data } = await supabase.from('visit_extra_photos').select('*').eq('visit_id', viewDialog).order('created_at');
+      return data || [];
+    },
+    enabled: !!viewDialog,
+  });
+
   // Team lead's team
   const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
   const myTeamId = myTeamMembership?.team_id;
