@@ -24,8 +24,8 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const GPS_THRESHOLD_METERS = 10;
-const GPS_TARGET_ACCURACY = 10; // meters - we want ±10m or better
+const GPS_THRESHOLD_METERS = 40; // verification radius around target
+const GPS_TARGET_ACCURACY = 10; // required GPS fix accuracy in meters
 const GPS_HARD_TIMEOUT_MS = 25000; // give the GPS chip up to 25s to converge
 
 /**
