@@ -169,6 +169,16 @@ const VisitsPage: React.FC = () => {
     enabled: !!viewDialog,
   });
 
+  const { data: visitExtraPhotos = [] } = useQuery({
+    queryKey: ['visit-extra-photos', viewDialog],
+    queryFn: async () => {
+      if (!viewDialog) return [];
+      const { data } = await supabase.from('visit_extra_photos').select('*').eq('visit_id', viewDialog).order('created_at');
+      return data || [];
+    },
+    enabled: !!viewDialog,
+  });
+
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return products;
     const q = productSearch.toLowerCase();
