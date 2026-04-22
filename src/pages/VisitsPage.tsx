@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -170,18 +170,46 @@ const VisitsPage: React.FC = () => {
     return products.filter(p => p.name.toLowerCase().includes(q));
   }, [products, productSearch]);
 
-  // Separate pending and completed visits, optimize pending order
+  // Separate pending and completed visits, with overdue-first then optimized order
   const pendingVisits = useMemo(() => {
     const pending = visits.filter(v => v.visit_status === 'assigned' && v.target_latitude && v.target_longitude);
-    if (currentLocation && dayStarted) {
-      return optimizeVisitOrder(currentLocation.lat, currentLocation.lng, pending);
-    }
-    return pending;
+    const now = Date.now();
+    const overdueToday = pending.filter((v: any) => v.due_date && new Date(v.due_date).getTime() <= now + 24 * 3600 * 1000);
+    const others = pending.filter((v: any) => !v.due_date || new Date(v.due_date).getTime() > now + 24 * 3600 * 1000);
+    const sortedOverdue = [...overdueToday].sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+    const optimized = currentLocation && dayStarted
+      ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, others)
+      : others;
+    return [...sortedOverdue, ...optimized];
   }, [visits, currentLocation, dayStarted]);
 
   const completedVisits = useMemo(() => {
     return visits.filter(v => v.visit_status !== 'assigned');
   }, [visits]);
+
+  // Auto-fail visits whose due date passed (no overdue allowed)
+  useEffect(() => {
+    if (!user) return;
+    const now = Date.now();
+    const toFail = visits.filter((v: any) =>
+      v.visit_status === 'assigned' &&
+      v.assigned_to === user.id &&
+      v.due_date &&
+      new Date(v.due_date).getTime() < now &&
+      !v.auto_failed
+    );
+    if (toFail.length === 0) return;
+    (async () => {
+      for (const v of toFail) {
+        await supabase.from('visits').update({
+          visit_status: 'failed',
+          auto_failed: true,
+          notes: (v.notes ? v.notes + ' | ' : '') + 'Auto-failed: not checked in by due date',
+        } as any).eq('id', v.id);
+      }
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
+    })();
+  }, [visits, user, queryClient]);
 
   const handleStartDay = useCallback(async () => {
     setPunchingIn(true);
