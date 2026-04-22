@@ -68,8 +68,30 @@ const ReportsPage: React.FC = () => {
     enabled: !!user,
   });
 
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['report-team-members'],
+    queryFn: async () => {
+      const { data } = await supabase.from('team_members').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ['report-teams'],
+    queryFn: async () => {
+      const { data } = await supabase.from('teams').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
   const getName = (userId: string) => profiles.find(p => p.user_id === userId)?.full_name || 'Unknown';
-  const getTeam = (userId: string) => profiles.find(p => p.user_id === userId)?.team_name || 'Unassigned';
+  const getTeam = (userId: string) => {
+    const m = teamMembers.find(tm => tm.user_id === userId);
+    if (!m) return 'Unassigned';
+    return teams.find(t => t.id === m.team_id)?.name || 'Unassigned';
+  };
   const getRole = (userId: string) => roles.find(r => r.user_id === userId)?.role || 'salesperson';
   const salespersonIds = roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
 
