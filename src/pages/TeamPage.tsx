@@ -504,6 +504,17 @@ const TeamPage: React.FC = () => {
       </div>
       {renderSalespersonSelect()}
       <div className="space-y-2">
+        <Label>Due Date (optional)</Label>
+        <Input type="datetime-local" value={dueDate} onChange={e => setDueDate(e.target.value)} disabled={noOverdue} />
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="noOverdue" checked={noOverdue} onChange={e => { setNoOverdue(e.target.checked); if (e.target.checked) setDueDate(''); }} className="h-4 w-4 rounded border-border" />
+          <Label htmlFor="noOverdue" className="text-sm font-normal">No due date (open-ended)</Label>
+        </div>
+        {!noOverdue && dueDate && (
+          <p className="text-xs text-muted-foreground">If the salesperson does not check in by this time, the visit is auto-failed.</p>
+        )}
+      </div>
+      <div className="space-y-2">
         <Label>Notes</Label>
         <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Visit instructions..." rows={2} />
       </div>
