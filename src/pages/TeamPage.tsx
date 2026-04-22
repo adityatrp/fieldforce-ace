@@ -706,6 +706,28 @@ const TeamPage: React.FC = () => {
                   />
                 </div>
               )}
+              {visitExtraPhotos.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Additional Photos ({visitExtraPhotos.length})</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {visitExtraPhotos.map((ep: any) => (
+                      <div key={ep.id} className="space-y-1">
+                        <SignedImage
+                          path={ep.photo_path}
+                          alt={ep.caption || 'Extra photo'}
+                          className="rounded-lg h-32 object-cover w-full cursor-pointer"
+                          onResolved={(u) => { (ep as any).__signedUrl = u; }}
+                          onClick={() => {
+                            const u = (ep as any).__signedUrl;
+                            if (u) window.open(u, '_blank');
+                          }}
+                        />
+                        {ep.caption && <p className="text-xs text-muted-foreground">{ep.caption}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {viewVisit.notes && (
                 <div><p className="text-sm text-muted-foreground">Notes</p><p className="text-sm">{viewVisit.notes}</p></div>
               )}
