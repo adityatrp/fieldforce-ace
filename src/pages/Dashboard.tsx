@@ -387,8 +387,8 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      {/* Sales target progress card */}
-      {scopedTargetTotal > 0 && (
+      {/* Sales target progress card — monthly target, only shown for this month / all time views */}
+      {scopedTargetTotal > 0 && (period === 'this_month' || period === 'all_time') && (
         <Card className="border-primary/20">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
