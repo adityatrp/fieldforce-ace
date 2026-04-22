@@ -857,6 +857,63 @@ const VisitsPage: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Edit Order Dialog (verified visits only) */}
+      <Dialog open={!!editOrderDialog} onOpenChange={open => !open && setEditOrderDialog(null)}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base">Edit Order</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <p className="text-xs text-muted-foreground">Visit details are locked. You can only update the order.</p>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search products..." value={productSearch} onChange={e => setProductSearch(e.target.value)} className="pl-9 rounded-xl" />
+            </div>
+            <div className="max-h-36 overflow-y-auto space-y-1">
+              {filteredProducts.map(p => (
+                <div key={p.id} className="flex items-center justify-between p-2 rounded-xl hover:bg-muted cursor-pointer text-sm" onClick={() => addProduct(p.id)}>
+                  <div>
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-muted-foreground text-xs ml-1">({p.unit})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">₹{Number(p.price)}</span>
+                    <Plus className="h-4 w-4 text-primary" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {orderItems.length > 0 && (
+              <div className="space-y-2 border-t pt-2">
+                {orderItems.map(oi => (
+                  <div key={oi.product_id} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded-xl">
+                    <span className="font-medium text-xs">{oi.product_name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={() => updateQuantity(oi.product_id, -1)}>
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="w-6 text-center font-semibold text-xs">{oi.quantity}</span>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={() => updateQuantity(oi.product_id, 1)}>
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                      <span className="text-xs text-muted-foreground ml-1 w-16 text-right">₹{(oi.price * oi.quantity).toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex justify-between text-sm font-bold pt-1 border-t">
+                  <span>Total</span>
+                  <span>₹{subtotal.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+            <Textarea value={orderNotes} onChange={e => setOrderNotes(e.target.value)} placeholder="Order notes..." rows={2} className="rounded-xl" />
+            <Button className="w-full h-11 rounded-xl" disabled={editOrderMutation.isPending} onClick={() => editOrderMutation.mutate(editOrderDialog!)}>
+              {editOrderMutation.isPending ? 'Saving...' : 'Save Order'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
