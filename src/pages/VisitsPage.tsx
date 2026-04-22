@@ -323,6 +323,24 @@ const VisitsPage: React.FC = () => {
 
       if (error) throw error;
 
+      // Upload optional extra photos with captions
+      if (extraPhotos.length > 0) {
+        const extraRows: { visit_id: string; photo_path: string; caption: string }[] = [];
+        for (let i = 0; i < extraPhotos.length; i++) {
+          const ep = extraPhotos[i];
+          try {
+            const compressedExtra = await compressImage(ep.file);
+            const epPath = `visits/${user!.id}/${Date.now()}_extra_${i}.jpg`;
+            const { error: epErr } = await supabase.storage.from('photos').upload(epPath, compressedExtra);
+            if (epErr) continue;
+            extraRows.push({ visit_id: visitId, photo_path: epPath, caption: ep.caption || '' });
+          } catch { /* skip failed extras */ }
+        }
+        if (extraRows.length > 0) {
+          await supabase.from('visit_extra_photos').insert(extraRows);
+        }
+      }
+
       if (orderReceived && orderItems.length > 0) {
         const discountMultiplier = 1 - (finalDiscount / 100);
         const items = orderItems.map(oi => ({
