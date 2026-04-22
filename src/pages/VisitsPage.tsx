@@ -24,46 +24,64 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const GPS_THRESHOLD_METERS = 40;
+const GPS_THRESHOLD_METERS = 10;
+const GPS_TARGET_ACCURACY = 10; // meters - we want ±10m or better
+const GPS_HARD_TIMEOUT_MS = 25000; // give the GPS chip up to 25s to converge
 
-function getPreciseLocation(): Promise<{ lat: number; lng: number; accuracy: number }> {
+/**
+ * Uses watchPosition to continuously sample GPS until accuracy <= target (10m)
+ * or the hard timeout fires. Returns the best (lowest accuracy) reading seen.
+ * Rejects only if no reading was received at all.
+ */
+function getPreciseLocation(
+  targetAccuracy: number = GPS_TARGET_ACCURACY
+): Promise<{ lat: number; lng: number; accuracy: number }> {
   return new Promise((resolve, reject) => {
-    let bestResult: GeolocationPosition | null = null;
-    let attempts = 0;
-    const maxAttempts = 3;
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation not supported'));
+      return;
+    }
 
-    const tryGet = () => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          attempts++;
-          if (!bestResult || pos.coords.accuracy < bestResult.coords.accuracy) {
-            bestResult = pos;
-          }
-          if (pos.coords.accuracy <= 10 || attempts >= maxAttempts) {
-            resolve({
-              lat: bestResult!.coords.latitude,
-              lng: bestResult!.coords.longitude,
-              accuracy: bestResult!.coords.accuracy,
-            });
-          } else {
-            setTimeout(tryGet, 500);
-          }
-        },
-        (err) => {
-          if (bestResult) {
-            resolve({
-              lat: bestResult.coords.latitude,
-              lng: bestResult.coords.longitude,
-              accuracy: bestResult.coords.accuracy,
-            });
-          } else {
-            reject(err);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-      );
+    let best: GeolocationPosition | null = null;
+    let settled = false;
+    let watchId: number | null = null;
+
+    const finish = (err?: Error | GeolocationPositionError) => {
+      if (settled) return;
+      settled = true;
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      clearTimeout(hardTimer);
+      if (best) {
+        resolve({
+          lat: best.coords.latitude,
+          lng: best.coords.longitude,
+          accuracy: best.coords.accuracy,
+        });
+      } else if (err) {
+        reject(err);
+      } else {
+        reject(new Error('Unable to acquire GPS fix'));
+      }
     };
-    tryGet();
+
+    const hardTimer = setTimeout(() => finish(), GPS_HARD_TIMEOUT_MS);
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!best || pos.coords.accuracy < best.coords.accuracy) {
+          best = pos;
+        }
+        // Once we hit target accuracy, stop watching and resolve.
+        if (best.coords.accuracy <= targetAccuracy) {
+          finish();
+        }
+      },
+      (err) => {
+        // Only reject if we never got a reading; otherwise let timeout return best
+        if (!best) finish(err);
+      },
+      { enableHighAccuracy: true, timeout: GPS_HARD_TIMEOUT_MS, maximumAge: 0 }
+    );
   });
 }
 
@@ -300,6 +318,11 @@ const VisitsPage: React.FC = () => {
   const checkInMutation = useMutation({
     mutationFn: async (visitId: string) => {
       if (!coords) throw new Error('GPS location required');
+      if (coords.accuracy > GPS_TARGET_ACCURACY) {
+        throw new Error(
+          `GPS accuracy is ±${Math.round(coords.accuracy)}m. We need ±${GPS_TARGET_ACCURACY}m or better. Move to an open area and tap Get My Location again.`
+        );
+      }
 
       const visit = visits.find(v => v.id === visitId);
       if (!visit) throw new Error('Visit not found');
@@ -795,10 +818,10 @@ const VisitsPage: React.FC = () => {
                 <Label className="text-xs">Your GPS Location</Label>
                 <Button type="button" variant="outline" className="w-full gap-2 h-11 rounded-xl native-btn" onClick={grabGPS} disabled={gpsStatus === 'loading'}>
                   <Navigation className="h-4 w-4" />
-                  {gpsStatus === 'loading' ? 'Getting precise location...' : gpsStatus === 'success' ? `📍 ${coords!.lat.toFixed(6)}, ${coords!.lng.toFixed(6)} (±${Math.round(coords!.accuracy)}m)` : 'Get My Location'}
+                  {gpsStatus === 'loading' ? 'Locking GPS (±10m)…' : gpsStatus === 'success' ? `📍 ${coords!.lat.toFixed(6)}, ${coords!.lng.toFixed(6)} (±${Math.round(coords!.accuracy)}m)` : 'Get My Location'}
                 </Button>
-                {gpsStatus === 'success' && coords!.accuracy > 40 && (
-                  <p className="text-xs text-warning">⚠️ Low accuracy (±{Math.round(coords!.accuracy)}m). Move to open area.</p>
+                {gpsStatus === 'success' && coords!.accuracy > GPS_TARGET_ACCURACY && (
+                  <p className="text-xs text-destructive">⚠️ Accuracy ±{Math.round(coords!.accuracy)}m — needs ±{GPS_TARGET_ACCURACY}m. Step outside / near a window and retry.</p>
                 )}
                 {gpsStatus === 'success' && selectedVisit.target_latitude && (
                   <p className="text-xs text-muted-foreground">
@@ -992,10 +1015,10 @@ const VisitsPage: React.FC = () => {
 
               <Button
                 className="w-full h-12 text-sm font-semibold rounded-xl native-btn"
-                disabled={gpsStatus !== 'success' || checkInMutation.isPending}
+                disabled={gpsStatus !== 'success' || (coords?.accuracy ?? Infinity) > GPS_TARGET_ACCURACY || checkInMutation.isPending}
                 onClick={() => checkInMutation.mutate(checkInDialog!)}
               >
-                {checkInMutation.isPending ? 'Verifying...' : 'Submit Check-In'}
+                {checkInMutation.isPending ? 'Verifying...' : (coords && coords.accuracy > GPS_TARGET_ACCURACY) ? `Improve GPS to ±${GPS_TARGET_ACCURACY}m` : 'Submit Check-In'}
               </Button>
             </div>
           )}
