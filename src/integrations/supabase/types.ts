@@ -56,14 +56,62 @@ export type Database = {
         }
         Relationships: []
       }
-      products: {
+      marketing_issuances: {
+        Row: {
+          created_at: string
+          id: string
+          issued_at: string
+          issued_by: string
+          issued_to: string
+          material_id: string
+          notes: string
+          quantity: number
+          returned_at: string | null
+          returned_quantity: number
+          status: string
+          team_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          issued_at?: string
+          issued_by: string
+          issued_to: string
+          material_id: string
+          notes?: string
+          quantity?: number
+          returned_at?: string | null
+          returned_quantity?: number
+          status?: string
+          team_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          issued_at?: string
+          issued_by?: string
+          issued_to?: string
+          material_id?: string
+          notes?: string
+          quantity?: number
+          returned_at?: string | null
+          returned_quantity?: number
+          status?: string
+          team_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      marketing_materials: {
         Row: {
           active: boolean
           created_at: string
           created_by: string
+          description: string
           id: string
           name: string
-          price: number
           team_id: string
           unit: string
           updated_at: string
@@ -72,9 +120,9 @@ export type Database = {
           active?: boolean
           created_at?: string
           created_by: string
+          description?: string
           id?: string
           name: string
-          price?: number
           team_id: string
           unit?: string
           updated_at?: string
@@ -83,9 +131,54 @@ export type Database = {
           active?: boolean
           created_at?: string
           created_by?: string
+          description?: string
+          id?: string
+          name?: string
+          team_id?: string
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      products: {
+        Row: {
+          active: boolean
+          category: string
+          created_at: string
+          created_by: string
+          description: string
+          id: string
+          name: string
+          price: number
+          sku: string
+          team_id: string
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          created_by: string
+          description?: string
+          id?: string
+          name: string
+          price?: number
+          sku?: string
+          team_id: string
+          unit?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          created_by?: string
+          description?: string
           id?: string
           name?: string
           price?: number
+          sku?: string
           team_id?: string
           unit?: string
           updated_at?: string
@@ -280,10 +373,12 @@ export type Database = {
         Row: {
           assigned_by: string | null
           assigned_to: string | null
+          auto_failed: boolean
           checked_in_at: string
           checked_out_at: string | null
           created_at: string
           customer_name: string
+          due_date: string | null
           id: string
           latitude: number | null
           location_name: string | null
@@ -292,6 +387,7 @@ export type Database = {
           order_notes: string | null
           order_received: boolean | null
           photo_url: string | null
+          reassigned_to_visit_id: string | null
           target_latitude: number | null
           target_longitude: number | null
           updated_at: string
@@ -301,10 +397,12 @@ export type Database = {
         Insert: {
           assigned_by?: string | null
           assigned_to?: string | null
+          auto_failed?: boolean
           checked_in_at?: string
           checked_out_at?: string | null
           created_at?: string
           customer_name: string
+          due_date?: string | null
           id?: string
           latitude?: number | null
           location_name?: string | null
@@ -313,6 +411,7 @@ export type Database = {
           order_notes?: string | null
           order_received?: boolean | null
           photo_url?: string | null
+          reassigned_to_visit_id?: string | null
           target_latitude?: number | null
           target_longitude?: number | null
           updated_at?: string
@@ -322,10 +421,12 @@ export type Database = {
         Update: {
           assigned_by?: string | null
           assigned_to?: string | null
+          auto_failed?: boolean
           checked_in_at?: string
           checked_out_at?: string | null
           created_at?: string
           customer_name?: string
+          due_date?: string | null
           id?: string
           latitude?: number | null
           location_name?: string | null
@@ -334,6 +435,7 @@ export type Database = {
           order_notes?: string | null
           order_received?: boolean | null
           photo_url?: string | null
+          reassigned_to_visit_id?: string | null
           target_latitude?: number | null
           target_longitude?: number | null
           updated_at?: string

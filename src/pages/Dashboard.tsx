@@ -6,7 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { MapPin, Receipt, Target, Clock, CheckCircle2, XCircle, Package, Users, TrendingUp, IndianRupee, Bell, ArrowLeft } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
+import { MapPin, Receipt, Target, Clock, CheckCircle2, XCircle, Package, Users, TrendingUp, IndianRupee, Bell, ArrowLeft, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useToast } from '@/hooks/use-toast';
 
@@ -16,6 +18,7 @@ const Dashboard: React.FC = () => {
   const { user, role } = useAuth();
   const { toast } = useToast();
   const [selectedSP, setSelectedSP] = useState<string | null>(null);
+  const [adminTeamFilter, setAdminTeamFilter] = useState<string>('all');
 
   const { data: visits = [] } = useQuery({
     queryKey: ['dashboard-visits', user?.id],
@@ -80,23 +83,40 @@ const Dashboard: React.FC = () => {
     enabled: !!user && (role === 'admin' || role === 'team_lead'),
   });
 
+  const { data: orderItems = [] } = useQuery({
+    queryKey: ['dashboard-order-items'],
+    queryFn: async () => {
+      const { data } = await supabase.from('visit_order_items').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
   const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
   const myTeamId = myTeamMembership?.team_id;
   const myTeamMemberIds = teamMembers.filter(tm => tm.team_id === myTeamId).map(tm => tm.user_id);
+
+  // Apply admin team filter (only when admin and no SP drill-in)
+  const adminTeamMemberIds = useMemo(() => {
+    if (role !== 'admin' || adminTeamFilter === 'all') return null;
+    return teamMembers.filter(tm => tm.team_id === adminTeamFilter).map(tm => tm.user_id);
+  }, [role, adminTeamFilter, teamMembers]);
 
   const scopedVisits = useMemo(() => {
     if (selectedSP) return visits.filter(v => v.assigned_to === selectedSP);
     if (role === 'salesperson') return visits.filter(v => v.assigned_to === user?.id);
     if (role === 'team_lead') return visits.filter(v => myTeamMemberIds.includes(v.assigned_to || ''));
+    if (role === 'admin' && adminTeamMemberIds) return visits.filter(v => adminTeamMemberIds.includes(v.assigned_to || ''));
     return visits;
-  }, [visits, role, user, myTeamMemberIds, selectedSP]);
+  }, [visits, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds]);
 
   const scopedExpenses = useMemo(() => {
     if (selectedSP) return expenses.filter(e => e.user_id === selectedSP);
     if (role === 'salesperson') return expenses.filter(e => e.user_id === user?.id);
     if (role === 'team_lead') return expenses.filter(e => myTeamMemberIds.includes(e.user_id));
+    if (role === 'admin' && adminTeamMemberIds) return expenses.filter(e => adminTeamMemberIds.includes(e.user_id));
     return expenses;
-  }, [expenses, role, user, myTeamMemberIds, selectedSP]);
+  }, [expenses, role, user, myTeamMemberIds, selectedSP, adminTeamMemberIds]);
 
   const verifiedVisits = scopedVisits.filter(v => v.visit_status === 'verified');
   const failedVisits = scopedVisits.filter(v => v.visit_status === 'failed');
@@ -180,6 +200,72 @@ const Dashboard: React.FC = () => {
     });
   };
 
+  // Sales achieved (current month) per salesperson, based on visit_order_items totals
+  const monthStart = useMemo(() => {
+    const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d;
+  }, []);
+  const monthEnd = useMemo(() => {
+    const d = new Date(monthStart); d.setMonth(d.getMonth() + 1); return d;
+  }, [monthStart]);
+
+  const visitIdToUser = useMemo(() => {
+    const m: Record<string, string> = {};
+    visits.forEach(v => { if (v.assigned_to) m[v.id] = v.assigned_to; });
+    return m;
+  }, [visits]);
+
+  const monthSalesByUser = useMemo(() => {
+    const verifiedThisMonth = new Set(
+      visits
+        .filter(v => v.visit_status === 'verified' && new Date(v.checked_in_at) >= monthStart && new Date(v.checked_in_at) < monthEnd)
+        .map(v => v.id)
+    );
+    const totals: Record<string, number> = {};
+    orderItems.forEach((oi: any) => {
+      if (!verifiedThisMonth.has(oi.visit_id)) return;
+      const uid = visitIdToUser[oi.visit_id];
+      if (!uid) return;
+      totals[uid] = (totals[uid] || 0) + Number(oi.price_at_order) * Number(oi.quantity);
+    });
+    return totals;
+  }, [orderItems, visits, monthStart, monthEnd, visitIdToUser]);
+
+  // Scoped sales for the headline card
+  const scopedUserIds = useMemo(() => {
+    if (selectedSP) return [selectedSP];
+    if (role === 'salesperson') return user ? [user.id] : [];
+    if (role === 'team_lead') return myTeamMemberIds;
+    if (role === 'admin' && adminTeamMemberIds) return adminTeamMemberIds;
+    return roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
+  }, [selectedSP, role, user, myTeamMemberIds, adminTeamMemberIds, roles]);
+
+  const scopedSalesAchieved = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser[uid] || 0), 0);
+  const scopedTargetTotal = scopedUserIds.reduce((s, uid) => {
+    const t = targets.find(t => t.user_id === uid);
+    return s + (t ? Number(t.target_value) : 0);
+  }, 0);
+  const scopedTargetPct = scopedTargetTotal > 0 ? Math.round((scopedSalesAchieved / scopedTargetTotal) * 100) : 0;
+
+  // End-of-month non-achievers (only show late in month or after month end)
+  const dayOfMonth = new Date().getDate();
+  const isMonthEnd = dayOfMonth >= 25;
+  const nonAchievers = useMemo(() => {
+    if (!isMonthEnd || (role !== 'admin' && role !== 'team_lead')) return [];
+    const spIds = role === 'team_lead'
+      ? myTeamMemberIds.filter(id => roles.find(r => r.user_id === id)?.role === 'salesperson')
+      : (adminTeamMemberIds || roles.filter(r => r.role === 'salesperson').map(r => r.user_id));
+    return spIds.map(uid => {
+      const target = targets.find(t => t.user_id === uid);
+      const targetVal = target ? Number(target.target_value) : 0;
+      const achieved = monthSalesByUser[uid] || 0;
+      const pct = targetVal > 0 ? Math.round((achieved / targetVal) * 100) : 0;
+      const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
+      const membership = teamMembers.find(tm => tm.user_id === uid);
+      const teamName = membership ? teams.find(t => t.id === membership.team_id)?.name || 'Unassigned' : 'Unassigned';
+      return { uid, name, teamName, targetVal, achieved, pct };
+    }).filter(x => x.targetVal > 0 && x.pct < 100);
+  }, [isMonthEnd, role, myTeamMemberIds, adminTeamMemberIds, roles, targets, monthSalesByUser, profiles, teamMembers, teams]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -194,14 +280,52 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         ) : (
-          <>
-            <h1 className="page-header">Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              {role === 'admin' ? 'All teams overview' : role === 'team_lead' ? 'Team performance' : 'Your performance'}
-            </p>
-          </>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="page-header">Dashboard</h1>
+              <p className="text-muted-foreground text-sm mt-0.5">
+                {role === 'admin'
+                  ? (adminTeamFilter === 'all' ? 'All teams overview' : `${teams.find(t => t.id === adminTeamFilter)?.name || ''} team overview`)
+                  : role === 'team_lead' ? 'Team performance' : 'Your performance'}
+              </p>
+            </div>
+            {role === 'admin' && (
+              <Select value={adminTeamFilter} onValueChange={setAdminTeamFilter}>
+                <SelectTrigger className="w-48 h-9">
+                  <SelectValue placeholder="Filter by team" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Teams</SelectItem>
+                  {teams.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Sales target progress card */}
+      {scopedTargetTotal > 0 && (
+        <Card className="border-primary/20">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                <p className="font-semibold text-sm">Sales Target Achieved (This Month)</p>
+              </div>
+              <p className="text-sm font-bold">
+                ₹{Math.round(scopedSalesAchieved).toLocaleString()} / ₹{scopedTargetTotal.toLocaleString()}
+              </p>
+            </div>
+            <Progress value={Math.min(100, scopedTargetPct)} className="h-2" />
+            <p className={`text-xs mt-2 font-medium ${scopedTargetPct >= 100 ? 'text-success' : 'text-muted-foreground'}`}>
+              {scopedTargetPct}% achieved {scopedTargetPct >= 100 ? '🎯' : ''}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map(s => (
@@ -293,6 +417,41 @@ const Dashboard: React.FC = () => {
                       <Bell className="h-3.5 w-3.5 mr-1" /> Alert
                     </Button>
                   </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Month-end target non-achievers */}
+      {nonAchievers.length > 0 && !selectedSP && (
+        <Card className="border-destructive/30">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              Target Not Achieved (Month-End)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {nonAchievers.map(sp => (
+                <div key={sp.uid} className="flex items-center justify-between p-3 rounded-lg bg-destructive/5">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-destructive/10 flex items-center justify-center text-sm font-bold text-destructive">
+                      {sp.name[0]}
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{sp.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium text-primary/80">{sp.teamName}</span>
+                        {' · '}₹{Math.round(sp.achieved).toLocaleString()} of ₹{sp.targetVal.toLocaleString()} ({sp.pct}%)
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setSelectedSP(sp.uid)}>
+                    View
+                  </Button>
                 </div>
               ))}
             </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/hooks/use-toast';
 import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye, Plus, Minus, Search, Percent, Play, LocateFixed, Route } from 'lucide-react';
 import SignedImage from '@/components/SignedImage';
+import { compressImage } from '@/lib/imageCompress';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -127,6 +128,9 @@ const VisitsPage: React.FC = () => {
   const [discountPercent, setDiscountPercent] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Edit-order dialog state
+  const [editOrderDialog, setEditOrderDialog] = useState<string | null>(null);
+
   // Day start punch-in state
   const [dayStarted, setDayStarted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
@@ -169,18 +173,46 @@ const VisitsPage: React.FC = () => {
     return products.filter(p => p.name.toLowerCase().includes(q));
   }, [products, productSearch]);
 
-  // Separate pending and completed visits, optimize pending order
+  // Separate pending and completed visits, with overdue-first then optimized order
   const pendingVisits = useMemo(() => {
     const pending = visits.filter(v => v.visit_status === 'assigned' && v.target_latitude && v.target_longitude);
-    if (currentLocation && dayStarted) {
-      return optimizeVisitOrder(currentLocation.lat, currentLocation.lng, pending);
-    }
-    return pending;
+    const now = Date.now();
+    const overdueToday = pending.filter((v: any) => v.due_date && new Date(v.due_date).getTime() <= now + 24 * 3600 * 1000);
+    const others = pending.filter((v: any) => !v.due_date || new Date(v.due_date).getTime() > now + 24 * 3600 * 1000);
+    const sortedOverdue = [...overdueToday].sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+    const optimized = currentLocation && dayStarted
+      ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, others)
+      : others;
+    return [...sortedOverdue, ...optimized];
   }, [visits, currentLocation, dayStarted]);
 
   const completedVisits = useMemo(() => {
     return visits.filter(v => v.visit_status !== 'assigned');
   }, [visits]);
+
+  // Auto-fail visits whose due date passed (no overdue allowed)
+  useEffect(() => {
+    if (!user) return;
+    const now = Date.now();
+    const toFail = visits.filter((v: any) =>
+      v.visit_status === 'assigned' &&
+      v.assigned_to === user.id &&
+      v.due_date &&
+      new Date(v.due_date).getTime() < now &&
+      !v.auto_failed
+    );
+    if (toFail.length === 0) return;
+    (async () => {
+      for (const v of toFail) {
+        await supabase.from('visits').update({
+          visit_status: 'failed',
+          auto_failed: true,
+          notes: (v.notes ? v.notes + ' | ' : '') + 'Auto-failed: not checked in by due date',
+        } as any).eq('id', v.id);
+      }
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
+    })();
+  }, [visits, user, queryClient]);
 
   const handleStartDay = useCallback(async () => {
     setPunchingIn(true);
@@ -247,9 +279,9 @@ const VisitsPage: React.FC = () => {
 
       let photoUrl = '';
       if (photo) {
-        const ext = photo.name.split('.').pop();
-        const path = `visits/${user!.id}/${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from('photos').upload(path, photo);
+        const compressed = await compressImage(photo);
+        const path = `visits/${user!.id}/${Date.now()}.jpg`;
+        const { error: uploadError } = await supabase.storage.from('photos').upload(path, compressed);
         if (uploadError) {
           throw new Error(`Could not upload visit photo: ${uploadError.message}`);
         }
@@ -328,6 +360,58 @@ const VisitsPage: React.FC = () => {
     },
   });
 
+
+  const editOrderMutation = useMutation({
+    mutationFn: async (visitId: string) => {
+      // Replace existing items with the new cart
+      await supabase.from('visit_order_items').delete().eq('visit_id', visitId);
+      const finalDiscount = discountPercent;
+      if (orderItems.length > 0) {
+        const discountMultiplier = 1 - (finalDiscount / 100);
+        const items = orderItems.map(oi => ({
+          visit_id: visitId,
+          product_id: oi.product_id,
+          quantity: oi.quantity,
+          price_at_order: Math.round(oi.price * discountMultiplier * 100) / 100,
+        }));
+        const { error: insErr } = await supabase.from('visit_order_items').insert(items);
+        if (insErr) throw insErr;
+      }
+      const { error } = await supabase.from('visits').update({
+        order_received: orderItems.length > 0,
+        order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
+      }).eq('id', visitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
+      queryClient.invalidateQueries({ queryKey: ['visit-order-items'] });
+      toast({ title: 'Order updated successfully' });
+      setEditOrderDialog(null);
+      setOrderItems([]); setOrderNotes(''); setDiscountPercent(0); setProductSearch('');
+    },
+    onError: (err: Error) => toast({ title: 'Failed to update order', description: err.message, variant: 'destructive' }),
+  });
+
+  const openEditOrder = async (v: any) => {
+    setEditOrderDialog(v.id);
+    const { data: existing } = await supabase
+      .from('visit_order_items')
+      .select('*, products(name, price)')
+      .eq('visit_id', v.id);
+    if (existing) {
+      setOrderItems(existing.map((it: any) => ({
+        product_id: it.product_id,
+        product_name: it.products?.name || 'Product',
+        quantity: Number(it.quantity),
+        price: Number(it.price_at_order),
+      })));
+    }
+    setOrderNotes((v.order_notes || '').replace(/\s*\|\s*Discount:.*/, ''));
+    setDiscountPercent(0);
+    setProductSearch('');
+  };
+
   const resetDialog = () => {
     setCheckInDialog(null);
     setNotes('');
@@ -355,9 +439,13 @@ const VisitsPage: React.FC = () => {
     const distFromCurrent = currentLocation && v.target_latitude
       ? Math.round(getDistanceMeters(currentLocation.lat, currentLocation.lng, v.target_latitude, v.target_longitude))
       : null;
+    const dueMs = v.due_date ? new Date(v.due_date).getTime() : null;
+    const now = Date.now();
+    const isOverdueToday = dueMs && dueMs <= now + 24 * 3600 * 1000 && v.visit_status === 'assigned';
+    const isPastDue = dueMs && dueMs < now && v.visit_status === 'assigned';
 
     return (
-      <Card key={v.id} className="field-card">
+      <Card key={v.id} className={`field-card ${isOverdueToday ? 'border-warning/50 bg-warning/5' : ''}`}>
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
             <div className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 ${v.visit_status === 'verified' ? 'bg-success/10' : v.visit_status === 'failed' ? 'bg-destructive/10' : 'bg-accent/10'}`}>
@@ -372,14 +460,24 @@ const VisitsPage: React.FC = () => {
                     <Package className="h-3 w-3 mr-0.5" /> Order
                   </Badge>
                 )}
+                {isOverdueToday && (
+                  <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] px-1.5 py-0">
+                    {isPastDue ? '⚠ Past due' : '⏰ Due today'}
+                  </Badge>
+                )}
               </div>
               {v.location_name && (
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">📍 {v.location_name}</p>
               )}
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <p className="text-xs text-muted-foreground">
                   {new Date(v.created_at).toLocaleDateString()}
                 </p>
+                {dueMs && (
+                  <p className="text-xs text-muted-foreground">
+                    · Due {new Date(dueMs).toLocaleDateString()}
+                  </p>
+                )}
                 {distFromCurrent !== null && v.visit_status === 'assigned' && (
                   <span className="text-xs text-primary font-medium">{distFromCurrent < 1000 ? `${distFromCurrent}m away` : `${(distFromCurrent / 1000).toFixed(1)}km away`}</span>
                 )}
@@ -389,6 +487,12 @@ const VisitsPage: React.FC = () => {
               {(v.visit_status === 'verified' || v.visit_status === 'failed') && (
                 <Button size="sm" variant="ghost" className="h-9 w-9 p-0 native-btn" onClick={() => setViewDialog(v.id)}>
                   <Eye className="h-4 w-4" />
+                </Button>
+              )}
+              {v.visit_status === 'verified' && role === 'salesperson' && (
+                <Button size="sm" variant="outline" className="h-9 native-btn rounded-xl text-xs" onClick={() => openEditOrder(v)}>
+                  <Package className="h-3.5 w-3.5 mr-1" />
+                  Edit Order
                 </Button>
               )}
               {v.visit_status === 'assigned' && role === 'salesperson' && (
@@ -751,6 +855,63 @@ const VisitsPage: React.FC = () => {
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Order Dialog (verified visits only) */}
+      <Dialog open={!!editOrderDialog} onOpenChange={open => !open && setEditOrderDialog(null)}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base">Edit Order</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <p className="text-xs text-muted-foreground">Visit details are locked. You can only update the order.</p>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search products..." value={productSearch} onChange={e => setProductSearch(e.target.value)} className="pl-9 rounded-xl" />
+            </div>
+            <div className="max-h-36 overflow-y-auto space-y-1">
+              {filteredProducts.map(p => (
+                <div key={p.id} className="flex items-center justify-between p-2 rounded-xl hover:bg-muted cursor-pointer text-sm" onClick={() => addProduct(p.id)}>
+                  <div>
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-muted-foreground text-xs ml-1">({p.unit})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">₹{Number(p.price)}</span>
+                    <Plus className="h-4 w-4 text-primary" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {orderItems.length > 0 && (
+              <div className="space-y-2 border-t pt-2">
+                {orderItems.map(oi => (
+                  <div key={oi.product_id} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded-xl">
+                    <span className="font-medium text-xs">{oi.product_name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={() => updateQuantity(oi.product_id, -1)}>
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="w-6 text-center font-semibold text-xs">{oi.quantity}</span>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={() => updateQuantity(oi.product_id, 1)}>
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                      <span className="text-xs text-muted-foreground ml-1 w-16 text-right">₹{(oi.price * oi.quantity).toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex justify-between text-sm font-bold pt-1 border-t">
+                  <span>Total</span>
+                  <span>₹{subtotal.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+            <Textarea value={orderNotes} onChange={e => setOrderNotes(e.target.value)} placeholder="Order notes..." rows={2} className="rounded-xl" />
+            <Button className="w-full h-11 rounded-xl" disabled={editOrderMutation.isPending} onClick={() => editOrderMutation.mutate(editOrderDialog!)}>
+              {editOrderMutation.isPending ? 'Saving...' : 'Save Order'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
