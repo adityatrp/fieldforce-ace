@@ -1068,6 +1068,22 @@ const VisitsPage: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Live camera capture dialogs (gallery uploads disabled) */}
+      <CameraCapture
+        open={mainCameraOpen}
+        onClose={() => setMainCameraOpen(false)}
+        onCapture={(file) => setPhoto(file)}
+        title="Check-in Photo"
+      />
+      <CameraCapture
+        open={extraCameraOpen}
+        onClose={() => setExtraCameraOpen(false)}
+        onCapture={(file) => {
+          if (extraPhotos.length < 5) setExtraPhotos(prev => [...prev, { file, caption: '' }]);
+        }}
+        title="Additional Photo"
+      />
     </div>
   );
 };
