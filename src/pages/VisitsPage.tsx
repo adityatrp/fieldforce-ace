@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye, Plus, Minus, Search, Percent, Play, LocateFixed, Route } from 'lucide-react';
+import SignedImage from '@/components/SignedImage';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -553,7 +554,7 @@ const VisitsPage: React.FC = () => {
               )}
 
               {viewVisit.photo_url && (
-                <img src={viewVisit.photo_url} alt="Visit photo" className="rounded-xl max-h-48 object-cover w-full" />
+                <SignedImage path={viewVisit.photo_url} alt="Visit photo" className="rounded-xl max-h-48 object-cover w-full" />
               )}
 
               {viewVisit.notes && (
