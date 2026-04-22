@@ -248,11 +248,12 @@ const VisitsPage: React.FC = () => {
       if (photo) {
         const ext = photo.name.split('.').pop();
         const path = `visits/${user!.id}/${Date.now()}.${ext}`;
-        const { error } = await supabase.storage.from('photos').upload(path, photo);
-        if (!error) {
-          const { data: urlData } = supabase.storage.from('photos').getPublicUrl(path);
-          photoUrl = urlData.publicUrl;
+        const { error: uploadError } = await supabase.storage.from('photos').upload(path, photo);
+        if (uploadError) {
+          throw new Error(`Could not upload visit photo: ${uploadError.message}`);
         }
+        // Store the storage path; viewers resolve to short-lived signed URLs.
+        photoUrl = path;
       }
 
       const distance = getDistanceMeters(
