@@ -200,6 +200,72 @@ const Dashboard: React.FC = () => {
     });
   };
 
+  // Sales achieved (current month) per salesperson, based on visit_order_items totals
+  const monthStart = useMemo(() => {
+    const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d;
+  }, []);
+  const monthEnd = useMemo(() => {
+    const d = new Date(monthStart); d.setMonth(d.getMonth() + 1); return d;
+  }, [monthStart]);
+
+  const visitIdToUser = useMemo(() => {
+    const m: Record<string, string> = {};
+    visits.forEach(v => { if (v.assigned_to) m[v.id] = v.assigned_to; });
+    return m;
+  }, [visits]);
+
+  const monthSalesByUser = useMemo(() => {
+    const verifiedThisMonth = new Set(
+      visits
+        .filter(v => v.visit_status === 'verified' && new Date(v.checked_in_at) >= monthStart && new Date(v.checked_in_at) < monthEnd)
+        .map(v => v.id)
+    );
+    const totals: Record<string, number> = {};
+    orderItems.forEach((oi: any) => {
+      if (!verifiedThisMonth.has(oi.visit_id)) return;
+      const uid = visitIdToUser[oi.visit_id];
+      if (!uid) return;
+      totals[uid] = (totals[uid] || 0) + Number(oi.price_at_order) * Number(oi.quantity);
+    });
+    return totals;
+  }, [orderItems, visits, monthStart, monthEnd, visitIdToUser]);
+
+  // Scoped sales for the headline card
+  const scopedUserIds = useMemo(() => {
+    if (selectedSP) return [selectedSP];
+    if (role === 'salesperson') return user ? [user.id] : [];
+    if (role === 'team_lead') return myTeamMemberIds;
+    if (role === 'admin' && adminTeamMemberIds) return adminTeamMemberIds;
+    return roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
+  }, [selectedSP, role, user, myTeamMemberIds, adminTeamMemberIds, roles]);
+
+  const scopedSalesAchieved = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser[uid] || 0), 0);
+  const scopedTargetTotal = scopedUserIds.reduce((s, uid) => {
+    const t = targets.find(t => t.user_id === uid);
+    return s + (t ? Number(t.target_value) : 0);
+  }, 0);
+  const scopedTargetPct = scopedTargetTotal > 0 ? Math.round((scopedSalesAchieved / scopedTargetTotal) * 100) : 0;
+
+  // End-of-month non-achievers (only show late in month or after month end)
+  const dayOfMonth = new Date().getDate();
+  const isMonthEnd = dayOfMonth >= 25;
+  const nonAchievers = useMemo(() => {
+    if (!isMonthEnd || (role !== 'admin' && role !== 'team_lead')) return [];
+    const spIds = role === 'team_lead'
+      ? myTeamMemberIds.filter(id => roles.find(r => r.user_id === id)?.role === 'salesperson')
+      : (adminTeamMemberIds || roles.filter(r => r.role === 'salesperson').map(r => r.user_id));
+    return spIds.map(uid => {
+      const target = targets.find(t => t.user_id === uid);
+      const targetVal = target ? Number(target.target_value) : 0;
+      const achieved = monthSalesByUser[uid] || 0;
+      const pct = targetVal > 0 ? Math.round((achieved / targetVal) * 100) : 0;
+      const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
+      const membership = teamMembers.find(tm => tm.user_id === uid);
+      const teamName = membership ? teams.find(t => t.id === membership.team_id)?.name || 'Unassigned' : 'Unassigned';
+      return { uid, name, teamName, targetVal, achieved, pct };
+    }).filter(x => x.targetVal > 0 && x.pct < 100);
+  }, [isMonthEnd, role, myTeamMemberIds, adminTeamMemberIds, roles, targets, monthSalesByUser, profiles, teamMembers, teams]);
+
   return (
     <div className="space-y-6">
       <div>
