@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye, Plus, Minus, Search, Percent, Play, LocateFixed, Route } from 'lucide-react';
 import SignedImage from '@/components/SignedImage';
 import { compressImage } from '@/lib/imageCompress';
+import CameraCapture from '@/components/CameraCapture';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -138,15 +139,15 @@ const VisitsPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
   const [extraPhotos, setExtraPhotos] = useState<{ file: File; caption: string }[]>([]);
-  const extraPhotoInputRef = useRef<HTMLInputElement>(null);
+  const [extraCameraOpen, setExtraCameraOpen] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [orderReceived, setOrderReceived] = useState(false);
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [orderNotes, setOrderNotes] = useState('');
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [discountPercent, setDiscountPercent] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [mainCameraOpen, setMainCameraOpen] = useState(false);
 
   // Edit-order dialog state
   const [editOrderDialog, setEditOrderDialog] = useState<string | null>(null);
@@ -835,11 +836,11 @@ const VisitsPage: React.FC = () => {
 
               <div className="space-y-2">
                 <Label className="text-xs">Photo (required)</Label>
-                <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setPhoto(e.target.files?.[0] || null)} />
-                <Button type="button" variant="outline" className="w-full h-14 gap-2 rounded-xl native-btn" onClick={() => fileInputRef.current?.click()}>
+                <Button type="button" variant="outline" className="w-full h-14 gap-2 rounded-xl native-btn" onClick={() => setMainCameraOpen(true)}>
                   <Camera className="h-5 w-5" />
-                  {photo ? photo.name : 'Take Photo'}
+                  {photo ? '✓ Photo Captured — Retake' : 'Open Camera'}
                 </Button>
+                <p className="text-[10px] text-muted-foreground">Live camera only. Gallery uploads are disabled.</p>
               </div>
 
               {/* Optional additional photos with captions (up to 5) */}
@@ -848,28 +849,14 @@ const VisitsPage: React.FC = () => {
                   <Label className="text-xs">Additional Photos (optional, up to 5)</Label>
                   <span className="text-[10px] text-muted-foreground">{extraPhotos.length}/5</span>
                 </div>
-                <input
-                  ref={extraPhotoInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f && extraPhotos.length < 5) {
-                      setExtraPhotos(prev => [...prev, { file: f, caption: '' }]);
-                    }
-                    if (extraPhotoInputRef.current) extraPhotoInputRef.current.value = '';
-                  }}
-                />
                 {extraPhotos.length < 5 && (
                   <Button
                     type="button"
                     variant="outline"
                     className="w-full h-10 gap-2 rounded-xl native-btn text-xs"
-                    onClick={() => extraPhotoInputRef.current?.click()}
+                    onClick={() => setExtraCameraOpen(true)}
                   >
-                    <Plus className="h-4 w-4" /> Add Another Photo
+                    <Camera className="h-4 w-4" /> Capture Another Photo
                   </Button>
                 )}
                 {extraPhotos.length > 0 && (
@@ -1081,6 +1068,22 @@ const VisitsPage: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Live camera capture dialogs (gallery uploads disabled) */}
+      <CameraCapture
+        open={mainCameraOpen}
+        onClose={() => setMainCameraOpen(false)}
+        onCapture={(file) => setPhoto(file)}
+        title="Check-in Photo"
+      />
+      <CameraCapture
+        open={extraCameraOpen}
+        onClose={() => setExtraCameraOpen(false)}
+        onCapture={(file) => {
+          if (extraPhotos.length < 5) setExtraPhotos(prev => [...prev, { file, caption: '' }]);
+        }}
+        title="Additional Photo"
+      />
     </div>
   );
 };

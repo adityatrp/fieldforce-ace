@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Receipt, Plus, AlertTriangle, CheckCircle2, Clock, XCircle, IndianRupee } from 'lucide-react';
 import { compressImage } from '@/lib/imageCompress';
+import CameraCapture from '@/components/CameraCapture';
 
 const CATEGORIES = ['Food', 'Travel', 'Accommodation', 'Communication', 'Office Supplies', 'Other'];
 const FOOD_LIMIT = 500;
@@ -33,7 +34,7 @@ const ExpensesPage: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: ['expenses', user?.id],
@@ -192,11 +193,11 @@ const ExpensesPage: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   <Label>Receipt Photo</Label>
-                  <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setReceipt(e.target.files?.[0] || null)} />
-                  <Button type="button" variant="outline" className="w-full gap-2" onClick={() => fileRef.current?.click()}>
+                  <Button type="button" variant="outline" className="w-full gap-2" onClick={() => setCameraOpen(true)}>
                     <Receipt className="h-4 w-4" />
-                    {receipt ? receipt.name : 'Upload Receipt'}
+                    {receipt ? '✓ Receipt Captured — Retake' : 'Open Camera'}
                   </Button>
+                  <p className="text-[10px] text-muted-foreground">Live camera only. Gallery uploads are disabled.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Notes</Label>
@@ -294,6 +295,13 @@ const ExpensesPage: React.FC = () => {
           })}
         </div>
       )}
+
+      <CameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(file) => setReceipt(file)}
+        title="Receipt Photo"
+      />
     </div>
   );
 };
