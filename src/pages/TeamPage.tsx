@@ -520,11 +520,20 @@ const TeamPage: React.FC = () => {
       </div>
       <Button
         className="w-full h-12 text-base"
-        disabled={!customerName || !targetLat || !targetLng || !assignedTo || (isEdit ? editVisitMutation.isPending : assignVisitMutation.isPending)}
-        onClick={() => isEdit ? editVisitMutation.mutate() : assignVisitMutation.mutate()}
+        disabled={!customerName || !targetLat || !targetLng || !assignedTo || (isEdit ? editVisitMutation.isPending : assignVisitMutation.isPending) || (!noOverdue && !dueDate && !isEdit ? false : false)}
+        onClick={() => {
+          const isReassignFromFailed = isEdit && visits.find(v => v.id === editVisitId)?.visit_status === 'failed';
+          if (isReassignFromFailed) {
+            assignVisitMutation.mutate();
+          } else if (isEdit) {
+            editVisitMutation.mutate();
+          } else {
+            assignVisitMutation.mutate();
+          }
+        }}
       >
         {isEdit
-          ? (editVisitMutation.isPending ? 'Updating...' : 'Update Visit')
+          ? (editVisitMutation.isPending || assignVisitMutation.isPending ? 'Saving...' : (visits.find(v => v.id === editVisitId)?.visit_status === 'failed' ? 'Reassign as New Visit' : 'Update Visit'))
           : (assignVisitMutation.isPending ? 'Assigning...' : 'Assign Visit')
         }
       </Button>
