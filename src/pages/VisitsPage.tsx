@@ -46,7 +46,7 @@ function getPreciseLocation(
     let settled = false;
     let watchId: number | null = null;
 
-    const finish = (err?: Error) => {
+    const finish = (err?: Error | GeolocationPositionError) => {
       if (settled) return;
       settled = true;
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
