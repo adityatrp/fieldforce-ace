@@ -689,7 +689,24 @@ const VisitsPage: React.FC = () => {
               )}
 
               {viewVisit.photo_url && (
-                <SignedImage path={viewVisit.photo_url} alt="Visit photo" className="rounded-xl max-h-48 object-cover w-full" />
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Primary Photo</p>
+                  <SignedImage path={viewVisit.photo_url} alt="Visit photo" className="rounded-xl max-h-48 object-cover w-full" />
+                </div>
+              )}
+
+              {visitExtraPhotos.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Additional Photos ({visitExtraPhotos.length})</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {visitExtraPhotos.map((ep: any) => (
+                      <div key={ep.id} className="space-y-1">
+                        <SignedImage path={ep.photo_path} alt={ep.caption || 'Extra photo'} className="rounded-xl h-28 object-cover w-full" />
+                        {ep.caption && <p className="text-[10px] text-muted-foreground line-clamp-2">{ep.caption}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {viewVisit.notes && (
