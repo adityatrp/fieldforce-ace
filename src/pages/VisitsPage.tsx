@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye, Plus, Minus, Search, Percent, Play, LocateFixed, Route } from 'lucide-react';
 import SignedImage from '@/components/SignedImage';
 import { compressImage } from '@/lib/imageCompress';
+import CameraCapture from '@/components/CameraCapture';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
