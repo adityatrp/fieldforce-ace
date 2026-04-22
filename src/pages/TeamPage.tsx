@@ -267,6 +267,10 @@ const TeamPage: React.FC = () => {
       if (isNaN(lat) || isNaN(lng)) throw new Error('Please provide valid GPS coordinates.');
       if (!assignedTo) throw new Error('Please select a salesperson to assign this visit to.');
       const dueIso = !noOverdue && dueDate ? new Date(dueDate).toISOString() : null;
+      const scheduledIso = scheduledAt ? new Date(scheduledAt).toISOString() : null;
+      if (dueIso && scheduledIso && new Date(dueIso) < new Date(scheduledIso)) {
+        throw new Error('Due date cannot be before the scheduled date.');
+      }
       // If editing a failed visit, treat as reassignment: create new visit and link parent.
       const isReassignFromFailed = !!editVisitId && visits.find(v => v.id === editVisitId)?.visit_status === 'failed';
 
@@ -276,6 +280,7 @@ const TeamPage: React.FC = () => {
         assigned_to: assignedTo, assigned_by: user!.id,
         user_id: user!.id, visit_status: 'assigned', notes,
         due_date: dueIso,
+        scheduled_at: scheduledIso,
       } as any).select().single();
       if (error) throw error;
 
@@ -298,12 +303,17 @@ const TeamPage: React.FC = () => {
       const lng = parseFloat(targetLng);
       if (isNaN(lat) || isNaN(lng)) throw new Error('Please provide valid GPS coordinates.');
       const dueIso = !noOverdue && dueDate ? new Date(dueDate).toISOString() : null;
+      const scheduledIso = scheduledAt ? new Date(scheduledAt).toISOString() : null;
+      if (dueIso && scheduledIso && new Date(dueIso) < new Date(scheduledIso)) {
+        throw new Error('Due date cannot be before the scheduled date.');
+      }
       const { error } = await supabase.from('visits').update({
         customer_name: customerName, location_name: locationName,
         target_latitude: lat, target_longitude: lng,
         assigned_to: assignedTo, notes,
         visit_status: 'assigned',
         due_date: dueIso,
+        scheduled_at: scheduledIso,
       } as any).eq('id', editVisitId);
       if (error) throw error;
     },
