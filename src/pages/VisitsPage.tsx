@@ -139,15 +139,15 @@ const VisitsPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
   const [extraPhotos, setExtraPhotos] = useState<{ file: File; caption: string }[]>([]);
-  const extraPhotoInputRef = useRef<HTMLInputElement>(null);
+  const [extraCameraOpen, setExtraCameraOpen] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [orderReceived, setOrderReceived] = useState(false);
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [orderNotes, setOrderNotes] = useState('');
+  const [orderItems, setOrderItems] = useState<Record<string, number>>({});
   const [productSearch, setProductSearch] = useState('');
   const [discountPercent, setDiscountPercent] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [mainCameraOpen, setMainCameraOpen] = useState(false);
 
   // Edit-order dialog state
   const [editOrderDialog, setEditOrderDialog] = useState<string | null>(null);
