@@ -31,6 +31,8 @@ const TeamPage: React.FC = () => {
   const [targetLng, setTargetLng] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
   const [notes, setNotes] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [noOverdue, setNoOverdue] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
 
   // View visit details
@@ -224,6 +226,7 @@ const TeamPage: React.FC = () => {
     setCustomerName(''); setLocationName(''); setAddress('');
     setTargetLat(''); setTargetLng(''); setAssignedTo('');
     setNotes(''); setEditVisitId(null); setSpSearch('');
+    setDueDate(''); setNoOverdue(false);
   };
 
   const assignVisitMutation = useMutation({
@@ -232,18 +235,27 @@ const TeamPage: React.FC = () => {
       const lng = parseFloat(targetLng);
       if (isNaN(lat) || isNaN(lng)) throw new Error('Please provide valid GPS coordinates.');
       if (!assignedTo) throw new Error('Please select a salesperson to assign this visit to.');
-      const { error } = await supabase.from('visits').insert({
+      const dueIso = !noOverdue && dueDate ? new Date(dueDate).toISOString() : null;
+      // If editing a failed visit, treat as reassignment: create new visit and link parent.
+      const isReassignFromFailed = !!editVisitId && visits.find(v => v.id === editVisitId)?.visit_status === 'failed';
+
+      const { data: created, error } = await supabase.from('visits').insert({
         customer_name: customerName, location_name: locationName,
         target_latitude: lat, target_longitude: lng,
         assigned_to: assignedTo, assigned_by: user!.id,
         user_id: user!.id, visit_status: 'assigned', notes,
-      });
+        due_date: dueIso,
+      } as any).select().single();
       if (error) throw error;
+
+      if (isReassignFromFailed && created) {
+        await supabase.from('visits').update({ reassigned_to_visit_id: created.id } as any).eq('id', editVisitId!);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team-visits'] });
       toast({ title: 'Visit assigned successfully' });
-      setOpen(false); resetForm();
+      setOpen(false); setEditOpen(false); resetForm();
     },
     onError: (err: Error) => toast({ title: 'Failed to assign visit', description: err.message, variant: 'destructive' }),
   });
@@ -254,12 +266,14 @@ const TeamPage: React.FC = () => {
       const lat = parseFloat(targetLat);
       const lng = parseFloat(targetLng);
       if (isNaN(lat) || isNaN(lng)) throw new Error('Please provide valid GPS coordinates.');
+      const dueIso = !noOverdue && dueDate ? new Date(dueDate).toISOString() : null;
       const { error } = await supabase.from('visits').update({
         customer_name: customerName, location_name: locationName,
         target_latitude: lat, target_longitude: lng,
         assigned_to: assignedTo, notes,
         visit_status: 'assigned',
-      }).eq('id', editVisitId);
+        due_date: dueIso,
+      } as any).eq('id', editVisitId);
       if (error) throw error;
     },
     onSuccess: () => {
