@@ -295,6 +295,13 @@ const ExpensesPage: React.FC = () => {
           })}
         </div>
       )}
+
+      <CameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(file) => setReceipt(file)}
+        title="Receipt Photo"
+      />
     </div>
   );
 };
