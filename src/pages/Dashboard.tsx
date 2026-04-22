@@ -327,18 +327,34 @@ const Dashboard: React.FC = () => {
     }).filter(x => x.targetVal > 0 && x.pct < 100);
   }, [isMonthEnd, role, myTeamMemberIds, adminTeamMemberIds, roles, targets, monthSalesByUser, profiles, teamMembers, teams]);
 
+  const periodSelector = (
+    <Select value={period} onValueChange={(v) => setPeriod(v as DashboardPeriod)}>
+      <SelectTrigger className="w-40 h-9">
+        <SelectValue placeholder="Period" />
+      </SelectTrigger>
+      <SelectContent>
+        {(Object.keys(PERIOD_LABELS) as DashboardPeriod[]).map(p => (
+          <SelectItem key={p} value={p}>{PERIOD_LABELS[p]}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <div className="space-y-6">
       <div>
         {selectedSP ? (
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => setSelectedSP(null)}>
-              <ArrowLeft className="h-4 w-4 mr-1" /> Back
-            </Button>
-            <div>
-              <h1 className="page-header">{selectedSPName}'s Dashboard</h1>
-              <p className="text-muted-foreground mt-1">Individual performance overview</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedSP(null)}>
+                <ArrowLeft className="h-4 w-4 mr-1" /> Back
+              </Button>
+              <div>
+                <h1 className="page-header">{selectedSPName}'s Dashboard</h1>
+                <p className="text-muted-foreground mt-1 text-sm">{PERIOD_LABELS[period]}</p>
+              </div>
             </div>
+            {periodSelector}
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -348,21 +364,25 @@ const Dashboard: React.FC = () => {
                 {role === 'admin'
                   ? (adminTeamFilter === 'all' ? 'All teams overview' : `${teams.find(t => t.id === adminTeamFilter)?.name || ''} team overview`)
                   : role === 'team_lead' ? 'Team performance' : 'Your performance'}
+                {' · '}{PERIOD_LABELS[period]}
               </p>
             </div>
-            {role === 'admin' && (
-              <Select value={adminTeamFilter} onValueChange={setAdminTeamFilter}>
-                <SelectTrigger className="w-48 h-9">
-                  <SelectValue placeholder="Filter by team" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Teams</SelectItem>
-                  {teams.map(t => (
-                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {periodSelector}
+              {role === 'admin' && (
+                <Select value={adminTeamFilter} onValueChange={setAdminTeamFilter}>
+                  <SelectTrigger className="w-48 h-9">
+                    <SelectValue placeholder="Filter by team" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Teams</SelectItem>
+                    {teams.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
         )}
       </div>
