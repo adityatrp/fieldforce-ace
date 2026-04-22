@@ -489,6 +489,8 @@ const VisitsPage: React.FC = () => {
     const now = Date.now();
     const isOverdueToday = dueMs && dueMs <= now + 24 * 3600 * 1000 && v.visit_status === 'assigned';
     const isPastDue = dueMs && dueMs < now && v.visit_status === 'assigned';
+    const scheduledMs = v.scheduled_at ? new Date(v.scheduled_at).getTime() : null;
+    const isUpcoming = scheduledMs && scheduledMs > now && v.visit_status === 'assigned';
 
     return (
       <Card key={v.id} className={`field-card ${isOverdueToday ? 'border-warning/50 bg-warning/5' : ''}`}>
@@ -509,6 +511,11 @@ const VisitsPage: React.FC = () => {
                 {isOverdueToday && (
                   <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] px-1.5 py-0">
                     {isPastDue ? '⚠ Past due' : '⏰ Due today'}
+                  </Badge>
+                )}
+                {isUpcoming && (
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[10px] px-1.5 py-0">
+                    📅 {new Date(scheduledMs).toLocaleDateString()}
                   </Badge>
                 )}
               </div>
@@ -541,7 +548,7 @@ const VisitsPage: React.FC = () => {
                   Edit Order
                 </Button>
               )}
-              {v.visit_status === 'assigned' && role === 'salesperson' && (
+              {v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming && (
                 <Button size="sm" className="h-9 native-btn rounded-xl text-xs" onClick={() => setCheckInDialog(v.id)}>
                   <Navigation className="h-3.5 w-3.5 mr-1" />
                   Check In
