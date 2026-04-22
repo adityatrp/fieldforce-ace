@@ -224,8 +224,8 @@ const TeamPage: React.FC = () => {
       const feature = photonData?.features?.[0];
       if (feature) {
         const [lon, lat] = feature.geometry.coordinates;
-        setTargetLat(parseFloat(lat).toFixed(6));
-        setTargetLng(parseFloat(lon).toFixed(6));
+        setTargetLat(String(parseFloat(lat)));
+        setTargetLng(String(parseFloat(lon)));
         const props = feature.properties || {};
         const label = [props.name, props.street, props.city, props.country].filter(Boolean).join(', ');
         setLocationName(label || address);
@@ -239,8 +239,8 @@ const TeamPage: React.FC = () => {
       );
       const results = await nomRes.json();
       if (results.length > 0) {
-        setTargetLat(parseFloat(results[0].lat).toFixed(6));
-        setTargetLng(parseFloat(results[0].lon).toFixed(6));
+        setTargetLat(String(parseFloat(results[0].lat)));
+        setTargetLng(String(parseFloat(results[0].lon)));
         setLocationName(results[0].display_name?.split(',').slice(0, 3).join(',') || address);
         toast({ title: 'Location found', description: results[0].display_name?.split(',').slice(0, 2).join(',') });
       } else {
@@ -466,8 +466,8 @@ const TeamPage: React.FC = () => {
       navigator.geolocation.clearWatch(watchId);
       clearTimeout(timer);
       if (best) {
-        setTargetLat(best.coords.latitude.toFixed(6));
-        setTargetLng(best.coords.longitude.toFixed(6));
+        setTargetLat(String(best.coords.latitude));
+        setTargetLng(String(best.coords.longitude));
         const acc = Math.round(best.coords.accuracy);
         if (best.coords.accuracy <= TARGET) {
           toast({ title: '✅ Precise location captured', description: `Accuracy: ±${acc}m` });
@@ -793,8 +793,8 @@ const TeamPage: React.FC = () => {
               {viewVisit.latitude && (
                 <div className="p-3 bg-muted/50 rounded-lg text-sm">
                   <p className="font-medium">📍 GPS</p>
-                  <p className="text-muted-foreground">Target: {viewVisit.target_latitude?.toFixed(5)}, {viewVisit.target_longitude?.toFixed(5)}</p>
-                  <p className="text-muted-foreground">Actual: {viewVisit.latitude.toFixed(5)}, {viewVisit.longitude?.toFixed(5)}</p>
+                  <p className="text-muted-foreground break-all">Target: {viewVisit.target_latitude?.toFixed(7)}, {viewVisit.target_longitude?.toFixed(7)}</p>
+                  <p className="text-muted-foreground break-all">Actual: {viewVisit.latitude.toFixed(7)}, {viewVisit.longitude?.toFixed(7)}</p>
                 </div>
               )}
               {viewVisit.photo_url && (
