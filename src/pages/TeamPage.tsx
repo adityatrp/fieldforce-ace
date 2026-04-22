@@ -31,6 +31,7 @@ const TeamPage: React.FC = () => {
   const [targetLng, setTargetLng] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
   const [notes, setNotes] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [noOverdue, setNoOverdue] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
@@ -256,7 +257,7 @@ const TeamPage: React.FC = () => {
     setCustomerName(''); setLocationName(''); setAddress('');
     setTargetLat(''); setTargetLng(''); setAssignedTo('');
     setNotes(''); setEditVisitId(null); setSpSearch('');
-    setDueDate(''); setNoOverdue(false);
+    setScheduledAt(''); setDueDate(''); setNoOverdue(false);
   };
 
   const assignVisitMutation = useMutation({
