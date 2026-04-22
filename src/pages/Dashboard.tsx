@@ -14,11 +14,62 @@ import { useToast } from '@/hooks/use-toast';
 
 const COLORS = ['hsl(213, 56%, 24%)', 'hsl(152, 55%, 42%)', 'hsl(38, 92%, 50%)', 'hsl(0, 72%, 51%)'];
 
+type DashboardPeriod = 'this_week' | 'this_month' | 'last_month' | 'last_3_months' | 'all_time';
+
+const PERIOD_LABELS: Record<DashboardPeriod, string> = {
+  this_week: 'This Week',
+  this_month: 'This Month',
+  last_month: 'Last Month',
+  last_3_months: 'Past 3 Months',
+  all_time: 'All Time',
+};
+
+function getPeriodRange(period: DashboardPeriod): { start: Date | null; end: Date | null } {
+  const now = new Date();
+  if (period === 'all_time') return { start: null, end: null };
+  if (period === 'this_week') {
+    const start = new Date(now);
+    const day = start.getDay();
+    const diff = (day + 6) % 7;
+    start.setDate(start.getDate() - diff);
+    start.setHours(0, 0, 0, 0);
+    return { start, end: null };
+  }
+  if (period === 'this_month') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { start, end: null };
+  }
+  if (period === 'last_month') {
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { start, end };
+  }
+  if (period === 'last_3_months') {
+    const start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    return { start, end: null };
+  }
+  return { start: null, end: null };
+}
+
 const Dashboard: React.FC = () => {
   const { user, role } = useAuth();
   const { toast } = useToast();
   const [selectedSP, setSelectedSP] = useState<string | null>(null);
   const [adminTeamFilter, setAdminTeamFilter] = useState<string>('all');
+  const [period, setPeriod] = useState<DashboardPeriod>('this_month');
+
+  const { periodStart, periodEnd } = useMemo(() => {
+    const { start, end } = getPeriodRange(period);
+    return { periodStart: start, periodEnd: end };
+  }, [period]);
+
+  const inPeriod = (dateStr: string | null | undefined) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (periodStart && d < periodStart) return false;
+    if (periodEnd && d >= periodEnd) return false;
+    return true;
+  };
 
   const { data: visits = [] } = useQuery({
     queryKey: ['dashboard-visits', user?.id],
