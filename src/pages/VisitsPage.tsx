@@ -261,22 +261,108 @@ const VisitsPage: React.FC = () => {
     })();
   }, [visits, user, queryClient]);
 
+  // Today's attendance: hydrate dayStarted from DB
+  const { data: todayPunch } = useQuery({
+    queryKey: ['attendance-today', user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const { data } = await supabase
+        .from('attendance_punches')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('punched_in_at', startOfDay.toISOString())
+        .order('punched_in_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (todayPunch && !todayPunch.punched_out_at) {
+      setDayStarted(true);
+      if (todayPunch.punch_in_latitude && todayPunch.punch_in_longitude) {
+        setCurrentLocation({
+          lat: todayPunch.punch_in_latitude,
+          lng: todayPunch.punch_in_longitude,
+          accuracy: todayPunch.punch_in_accuracy ?? 0,
+        });
+      }
+    }
+  }, [todayPunch]);
+
   const handleStartDay = useCallback(async () => {
     setPunchingIn(true);
     try {
       const loc = await getPreciseLocation();
+      const battery = await readBattery();
       setCurrentLocation(loc);
       setDayStarted(true);
+      // Persist punch-in
+      await supabase.from('attendance_punches').insert({
+        user_id: user!.id,
+        punch_in_latitude: loc.lat,
+        punch_in_longitude: loc.lng,
+        punch_in_accuracy: loc.accuracy,
+        battery_percent_in: battery.percent,
+      });
+      // Also log a starting location ping
+      await supabase.from('location_logs').insert({
+        user_id: user!.id,
+        latitude: loc.lat,
+        longitude: loc.lng,
+        accuracy: loc.accuracy,
+        battery_percent: battery.percent,
+        battery_charging: battery.charging,
+        source: 'punch_in',
+      });
+      queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
       toast({
-        title: '🚀 Day Started!',
-        description: `Location locked (±${Math.round(loc.accuracy)}m). Visits optimized by route.`,
+        title: '🚀 Punched In!',
+        description: `Tracking started (±${Math.round(loc.accuracy)}m). You can punch out at end of day.`,
       });
     } catch (err: any) {
       toast({ title: 'GPS Error', description: err.message || 'Could not get location', variant: 'destructive' });
     } finally {
       setPunchingIn(false);
     }
-  }, [toast]);
+  }, [toast, user, queryClient]);
+
+  const handleEndDay = useCallback(async () => {
+    if (!todayPunch || todayPunch.punched_out_at) return;
+    setPunchingIn(true);
+    try {
+      const loc = await getPreciseLocation();
+      const battery = await readBattery();
+      await supabase.from('attendance_punches').update({
+        punched_out_at: new Date().toISOString(),
+        punch_out_latitude: loc.lat,
+        punch_out_longitude: loc.lng,
+        punch_out_accuracy: loc.accuracy,
+        battery_percent_out: battery.percent,
+      }).eq('id', todayPunch.id);
+      await supabase.from('location_logs').insert({
+        user_id: user!.id,
+        latitude: loc.lat,
+        longitude: loc.lng,
+        accuracy: loc.accuracy,
+        battery_percent: battery.percent,
+        battery_charging: battery.charging,
+        source: 'punch_out',
+      });
+      setDayStarted(false);
+      setCurrentLocation(null);
+      queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
+      toast({ title: '👋 Punched Out', description: 'Tracking stopped. Have a good evening!' });
+    } catch (err: any) {
+      toast({ title: 'GPS Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setPunchingIn(false);
+    }
+  }, [todayPunch, toast, user, queryClient]);
 
   const grabGPS = async () => {
     setGpsStatus('loading');
