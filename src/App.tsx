@@ -29,6 +29,12 @@ const ProtectedReportsPage = () => {
   return <ReportsPage />;
 };
 
+const ProtectedTrackingPage = () => {
+  const { role } = useAuth();
+  if (role !== 'admin' && role !== 'team_lead') return <Navigate to="/" replace />;
+  return <TrackingPage />;
+};
+
 const AppRoutes = () => {
   const { user, loading } = useAuth();
 
@@ -50,6 +56,7 @@ const AppRoutes = () => {
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/team" element={<ProtectedTeamPage />} />
+        <Route path="/tracking" element={<ProtectedTrackingPage />} />
         <Route path="/reports" element={<ProtectedReportsPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
