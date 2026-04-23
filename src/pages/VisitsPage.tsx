@@ -1013,10 +1013,10 @@ const VisitsPage: React.FC = () => {
 
               <Button
                 className="w-full h-12 text-sm font-semibold rounded-xl native-btn"
-                disabled={gpsStatus !== 'success' || (coords?.accuracy ?? Infinity) > GPS_TARGET_ACCURACY || checkInMutation.isPending}
+                disabled={gpsStatus !== 'success' || checkInMutation.isPending}
                 onClick={() => checkInMutation.mutate(checkInDialog!)}
               >
-                {checkInMutation.isPending ? 'Verifying...' : (coords && coords.accuracy > GPS_TARGET_ACCURACY) ? `Improve GPS to ±${GPS_TARGET_ACCURACY}m` : 'Submit Check-In'}
+                {checkInMutation.isPending ? 'Verifying...' : 'Submit Check-In'}
               </Button>
             </div>
           )}
