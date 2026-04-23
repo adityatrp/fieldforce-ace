@@ -696,8 +696,8 @@ const VisitsPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Start Day Button for salesperson */}
-      {role === 'salesperson' && !dayStarted && pending > 0 && (
+      {/* Daily Punch In/Out for salesperson */}
+      {role === 'salesperson' && !dayStarted && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4">
             <div className="flex items-center gap-4">
@@ -705,8 +705,10 @@ const VisitsPage: React.FC = () => {
                 <Play className="h-6 w-6 text-primary" />
               </div>
               <div className="flex-1">
-                <p className="font-semibold text-sm">Start Your Day</p>
-                <p className="text-xs text-muted-foreground">Punch in your location to optimize {pending} pending visit{pending > 1 ? 's' : ''} by shortest route.</p>
+                <p className="font-semibold text-sm">Punch In for the Day</p>
+                <p className="text-xs text-muted-foreground">
+                  Once punched in, your location is tracked at every visit check-in until you punch out.
+                </p>
               </div>
               <Button
                 className="h-10 rounded-xl native-btn"
@@ -721,12 +723,23 @@ const VisitsPage: React.FC = () => {
         </Card>
       )}
 
-      {/* Day started indicator */}
-      {dayStarted && currentLocation && (
+      {/* Day started indicator + Punch Out */}
+      {role === 'salesperson' && dayStarted && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-success/10 text-success text-sm font-medium">
           <Route className="h-4 w-4" />
-          Route optimized • {pending} visit{pending !== 1 ? 's' : ''} remaining
-          <span className="text-xs text-success/70 ml-auto">±{Math.round(currentLocation.accuracy)}m</span>
+          <span>Punched in • {pending} visit{pending !== 1 ? 's' : ''} remaining</span>
+          {currentLocation && (
+            <span className="text-xs text-success/70 ml-2">±{Math.round(currentLocation.accuracy)}m</span>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto h-8 rounded-lg text-xs"
+            onClick={handleEndDay}
+            disabled={punchingIn}
+          >
+            {punchingIn ? '…' : 'Punch Out'}
+          </Button>
         </div>
       )}
 
