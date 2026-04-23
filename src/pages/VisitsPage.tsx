@@ -405,6 +405,9 @@ const VisitsPage: React.FC = () => {
 
   const checkInMutation = useMutation({
     mutationFn: async (visitId: string) => {
+      if (role === 'salesperson' && !dayStarted) {
+        throw new Error('Punch in for the day before checking into a visit.');
+      }
       if (!coords) throw new Error('GPS location required');
 
       const visit = visits.find(v => v.id === visitId);
