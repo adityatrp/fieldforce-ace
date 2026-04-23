@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  LayoutDashboard, MapPin, Receipt, Trophy, Users, LogOut, Menu, X, FileText,
+  LayoutDashboard, MapPin, Receipt, Trophy, Users, LogOut, Menu, X, FileText, Route,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
