@@ -12,6 +12,7 @@ import ExpensesPage from "@/pages/ExpensesPage";
 import LeaderboardPage from "@/pages/LeaderboardPage";
 import TeamPage from "@/pages/TeamPage";
 import ReportsPage from "@/pages/ReportsPage";
+import TrackingPage from "@/pages/TrackingPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
