@@ -14,6 +14,7 @@ import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye,
 import SignedImage from '@/components/SignedImage';
 import { compressImage } from '@/lib/imageCompress';
 import CameraCapture from '@/components/CameraCapture';
+import { readBattery } from '@/lib/battery';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -26,8 +27,8 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 const GPS_THRESHOLD_METERS = 40; // verification radius around target
-const GPS_TARGET_ACCURACY = 10; // required GPS fix accuracy in meters
-const GPS_HARD_TIMEOUT_MS = 25000; // give the GPS chip up to 25s to converge
+const GPS_TARGET_ACCURACY = 10; // best-effort target; not enforced
+const GPS_HARD_TIMEOUT_MS = 15000; // give the GPS chip up to 15s to converge
 
 /**
  * Uses watchPosition to continuously sample GPS until accuracy <= target (10m)
