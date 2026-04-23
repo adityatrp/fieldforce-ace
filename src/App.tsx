@@ -12,6 +12,7 @@ import ExpensesPage from "@/pages/ExpensesPage";
 import LeaderboardPage from "@/pages/LeaderboardPage";
 import TeamPage from "@/pages/TeamPage";
 import ReportsPage from "@/pages/ReportsPage";
+import TrackingPage from "@/pages/TrackingPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,12 @@ const ProtectedReportsPage = () => {
   const { role } = useAuth();
   if (role !== 'admin') return <Navigate to="/" replace />;
   return <ReportsPage />;
+};
+
+const ProtectedTrackingPage = () => {
+  const { role } = useAuth();
+  if (role !== 'admin' && role !== 'team_lead') return <Navigate to="/" replace />;
+  return <TrackingPage />;
 };
 
 const AppRoutes = () => {
@@ -49,6 +56,7 @@ const AppRoutes = () => {
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/team" element={<ProtectedTeamPage />} />
+        <Route path="/tracking" element={<ProtectedTrackingPage />} />
         <Route path="/reports" element={<ProtectedReportsPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

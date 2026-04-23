@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  LayoutDashboard, MapPin, Receipt, Trophy, Users, LogOut, Menu, X, FileText,
+  LayoutDashboard, MapPin, Receipt, Trophy, Users, LogOut, Menu, X, FileText, Route,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,9 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { to: '/leaderboard', icon: Trophy, label: 'Board' },
     ...(role === 'admin' || role === 'team_lead'
       ? [{ to: '/team', icon: Users, label: 'Team' }]
+      : []),
+    ...(role === 'admin' || role === 'team_lead'
+      ? [{ to: '/tracking', icon: Route, label: 'Tracking' }]
       : []),
     ...(role === 'admin'
       ? [{ to: '/reports', icon: FileText, label: 'Reports' }]

@@ -14,6 +14,7 @@ import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye,
 import SignedImage from '@/components/SignedImage';
 import { compressImage } from '@/lib/imageCompress';
 import CameraCapture from '@/components/CameraCapture';
+import { readBattery } from '@/lib/battery';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -26,8 +27,8 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 const GPS_THRESHOLD_METERS = 40; // verification radius around target
-const GPS_TARGET_ACCURACY = 10; // required GPS fix accuracy in meters
-const GPS_HARD_TIMEOUT_MS = 25000; // give the GPS chip up to 25s to converge
+const GPS_TARGET_ACCURACY = 10; // best-effort target; not enforced
+const GPS_HARD_TIMEOUT_MS = 15000; // give the GPS chip up to 15s to converge
 
 /**
  * Uses watchPosition to continuously sample GPS until accuracy <= target (10m)
@@ -260,22 +261,108 @@ const VisitsPage: React.FC = () => {
     })();
   }, [visits, user, queryClient]);
 
+  // Today's attendance: hydrate dayStarted from DB
+  const { data: todayPunch } = useQuery({
+    queryKey: ['attendance-today', user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const { data } = await supabase
+        .from('attendance_punches')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('punched_in_at', startOfDay.toISOString())
+        .order('punched_in_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (todayPunch && !todayPunch.punched_out_at) {
+      setDayStarted(true);
+      if (todayPunch.punch_in_latitude && todayPunch.punch_in_longitude) {
+        setCurrentLocation({
+          lat: todayPunch.punch_in_latitude,
+          lng: todayPunch.punch_in_longitude,
+          accuracy: todayPunch.punch_in_accuracy ?? 0,
+        });
+      }
+    }
+  }, [todayPunch]);
+
   const handleStartDay = useCallback(async () => {
     setPunchingIn(true);
     try {
       const loc = await getPreciseLocation();
+      const battery = await readBattery();
       setCurrentLocation(loc);
       setDayStarted(true);
+      // Persist punch-in
+      await supabase.from('attendance_punches').insert({
+        user_id: user!.id,
+        punch_in_latitude: loc.lat,
+        punch_in_longitude: loc.lng,
+        punch_in_accuracy: loc.accuracy,
+        battery_percent_in: battery.percent,
+      });
+      // Also log a starting location ping
+      await supabase.from('location_logs').insert({
+        user_id: user!.id,
+        latitude: loc.lat,
+        longitude: loc.lng,
+        accuracy: loc.accuracy,
+        battery_percent: battery.percent,
+        battery_charging: battery.charging,
+        source: 'punch_in',
+      });
+      queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
       toast({
-        title: '🚀 Day Started!',
-        description: `Location locked (±${Math.round(loc.accuracy)}m). Visits optimized by route.`,
+        title: '🚀 Punched In!',
+        description: `Tracking started (±${Math.round(loc.accuracy)}m). You can punch out at end of day.`,
       });
     } catch (err: any) {
       toast({ title: 'GPS Error', description: err.message || 'Could not get location', variant: 'destructive' });
     } finally {
       setPunchingIn(false);
     }
-  }, [toast]);
+  }, [toast, user, queryClient]);
+
+  const handleEndDay = useCallback(async () => {
+    if (!todayPunch || todayPunch.punched_out_at) return;
+    setPunchingIn(true);
+    try {
+      const loc = await getPreciseLocation();
+      const battery = await readBattery();
+      await supabase.from('attendance_punches').update({
+        punched_out_at: new Date().toISOString(),
+        punch_out_latitude: loc.lat,
+        punch_out_longitude: loc.lng,
+        punch_out_accuracy: loc.accuracy,
+        battery_percent_out: battery.percent,
+      }).eq('id', todayPunch.id);
+      await supabase.from('location_logs').insert({
+        user_id: user!.id,
+        latitude: loc.lat,
+        longitude: loc.lng,
+        accuracy: loc.accuracy,
+        battery_percent: battery.percent,
+        battery_charging: battery.charging,
+        source: 'punch_out',
+      });
+      setDayStarted(false);
+      setCurrentLocation(null);
+      queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
+      toast({ title: '👋 Punched Out', description: 'Tracking stopped. Have a good evening!' });
+    } catch (err: any) {
+      toast({ title: 'GPS Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setPunchingIn(false);
+    }
+  }, [todayPunch, toast, user, queryClient]);
 
   const grabGPS = async () => {
     setGpsStatus('loading');
@@ -318,12 +405,10 @@ const VisitsPage: React.FC = () => {
 
   const checkInMutation = useMutation({
     mutationFn: async (visitId: string) => {
-      if (!coords) throw new Error('GPS location required');
-      if (coords.accuracy > GPS_TARGET_ACCURACY) {
-        throw new Error(
-          `GPS accuracy is ±${Math.round(coords.accuracy)}m. We need ±${GPS_TARGET_ACCURACY}m or better. Move to an open area and tap Get My Location again.`
-        );
+      if (role === 'salesperson' && !dayStarted) {
+        throw new Error('Punch in for the day before checking into a visit.');
       }
+      if (!coords) throw new Error('GPS location required');
 
       const visit = visits.find(v => v.id === visitId);
       if (!visit) throw new Error('Visit not found');
@@ -390,6 +475,21 @@ const VisitsPage: React.FC = () => {
         }));
         await supabase.from('visit_order_items').insert(items);
       }
+
+      // Log location ping for distance/route history (best-effort, non-blocking)
+      try {
+        const battery = await readBattery();
+        await supabase.from('location_logs').insert({
+          user_id: user!.id,
+          visit_id: visitId,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          accuracy: coords.accuracy,
+          battery_percent: battery.percent,
+          battery_charging: battery.charging,
+          source: 'visit_check_in',
+        });
+      } catch { /* never block check-in on logging */ }
 
       return { isVerified, distance: Math.round(distance) };
     },
@@ -599,8 +699,8 @@ const VisitsPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Start Day Button for salesperson */}
-      {role === 'salesperson' && !dayStarted && pending > 0 && (
+      {/* Daily Punch In/Out for salesperson */}
+      {role === 'salesperson' && !dayStarted && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4">
             <div className="flex items-center gap-4">
@@ -608,8 +708,10 @@ const VisitsPage: React.FC = () => {
                 <Play className="h-6 w-6 text-primary" />
               </div>
               <div className="flex-1">
-                <p className="font-semibold text-sm">Start Your Day</p>
-                <p className="text-xs text-muted-foreground">Punch in your location to optimize {pending} pending visit{pending > 1 ? 's' : ''} by shortest route.</p>
+                <p className="font-semibold text-sm">Punch In for the Day</p>
+                <p className="text-xs text-muted-foreground">
+                  Once punched in, your location is tracked at every visit check-in until you punch out.
+                </p>
               </div>
               <Button
                 className="h-10 rounded-xl native-btn"
@@ -624,12 +726,23 @@ const VisitsPage: React.FC = () => {
         </Card>
       )}
 
-      {/* Day started indicator */}
-      {dayStarted && currentLocation && (
+      {/* Day started indicator + Punch Out */}
+      {role === 'salesperson' && dayStarted && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-success/10 text-success text-sm font-medium">
           <Route className="h-4 w-4" />
-          Route optimized • {pending} visit{pending !== 1 ? 's' : ''} remaining
-          <span className="text-xs text-success/70 ml-auto">±{Math.round(currentLocation.accuracy)}m</span>
+          <span>Punched in • {pending} visit{pending !== 1 ? 's' : ''} remaining</span>
+          {currentLocation && (
+            <span className="text-xs text-success/70 ml-2">±{Math.round(currentLocation.accuracy)}m</span>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto h-8 rounded-lg text-xs"
+            onClick={handleEndDay}
+            disabled={punchingIn}
+          >
+            {punchingIn ? '…' : 'Punch Out'}
+          </Button>
         </div>
       )}
 
@@ -819,10 +932,10 @@ const VisitsPage: React.FC = () => {
                 <Label className="text-xs">Your GPS Location</Label>
                 <Button type="button" variant="outline" className="w-full gap-2 h-11 rounded-xl native-btn" onClick={grabGPS} disabled={gpsStatus === 'loading'}>
                   <Navigation className="h-4 w-4" />
-                  {gpsStatus === 'loading' ? 'Locking GPS (±10m)…' : gpsStatus === 'success' ? `📍 ${coords!.lat.toFixed(7)}, ${coords!.lng.toFixed(7)} (±${Math.round(coords!.accuracy)}m)` : 'Get My Location'}
+                  {gpsStatus === 'loading' ? 'Locating…' : gpsStatus === 'success' ? `📍 ${coords!.lat.toFixed(7)}, ${coords!.lng.toFixed(7)} (±${Math.round(coords!.accuracy)}m)` : 'Get My Location'}
                 </Button>
-                {gpsStatus === 'success' && coords!.accuracy > GPS_TARGET_ACCURACY && (
-                  <p className="text-xs text-destructive">⚠️ Accuracy ±{Math.round(coords!.accuracy)}m — needs ±{GPS_TARGET_ACCURACY}m. Step outside / near a window and retry.</p>
+                {gpsStatus === 'success' && (
+                  <p className="text-[11px] text-muted-foreground">Tap again to refresh your location for a better fix.</p>
                 )}
                 {gpsStatus === 'success' && selectedVisit.target_latitude && (
                   <p className="text-xs text-muted-foreground">
@@ -1002,10 +1115,10 @@ const VisitsPage: React.FC = () => {
 
               <Button
                 className="w-full h-12 text-sm font-semibold rounded-xl native-btn"
-                disabled={gpsStatus !== 'success' || (coords?.accuracy ?? Infinity) > GPS_TARGET_ACCURACY || checkInMutation.isPending}
+                disabled={gpsStatus !== 'success' || checkInMutation.isPending}
                 onClick={() => checkInMutation.mutate(checkInDialog!)}
               >
-                {checkInMutation.isPending ? 'Verifying...' : (coords && coords.accuracy > GPS_TARGET_ACCURACY) ? `Improve GPS to ±${GPS_TARGET_ACCURACY}m` : 'Submit Check-In'}
+                {checkInMutation.isPending ? 'Verifying...' : 'Submit Check-In'}
               </Button>
             </div>
           )}
