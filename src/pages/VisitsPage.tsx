@@ -387,6 +387,21 @@ const VisitsPage: React.FC = () => {
         await supabase.from('visit_order_items').insert(items);
       }
 
+      // Log location ping for distance/route history (best-effort, non-blocking)
+      try {
+        const battery = await readBattery();
+        await supabase.from('location_logs').insert({
+          user_id: user!.id,
+          visit_id: visitId,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          accuracy: coords.accuracy,
+          battery_percent: battery.percent,
+          battery_charging: battery.charging,
+          source: 'visit_check_in',
+        });
+      } catch { /* never block check-in on logging */ }
+
       return { isVerified, distance: Math.round(distance) };
     },
     onSuccess: async (result) => {
