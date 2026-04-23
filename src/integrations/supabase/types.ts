@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      attendance_punches: {
+        Row: {
+          battery_percent_in: number | null
+          battery_percent_out: number | null
+          created_at: string
+          id: string
+          punch_in_accuracy: number | null
+          punch_in_latitude: number | null
+          punch_in_longitude: number | null
+          punch_out_accuracy: number | null
+          punch_out_latitude: number | null
+          punch_out_longitude: number | null
+          punched_in_at: string
+          punched_out_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          battery_percent_in?: number | null
+          battery_percent_out?: number | null
+          created_at?: string
+          id?: string
+          punch_in_accuracy?: number | null
+          punch_in_latitude?: number | null
+          punch_in_longitude?: number | null
+          punch_out_accuracy?: number | null
+          punch_out_latitude?: number | null
+          punch_out_longitude?: number | null
+          punched_in_at?: string
+          punched_out_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          battery_percent_in?: number | null
+          battery_percent_out?: number | null
+          created_at?: string
+          id?: string
+          punch_in_accuracy?: number | null
+          punch_in_latitude?: number | null
+          punch_in_longitude?: number | null
+          punch_out_accuracy?: number | null
+          punch_out_latitude?: number | null
+          punch_out_longitude?: number | null
+          punched_in_at?: string
+          punched_out_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       expenses: {
         Row: {
           amount: number
@@ -53,6 +104,48 @@ export type Database = {
           updated_at?: string
           user_id?: string
           validation_result?: string | null
+        }
+        Relationships: []
+      }
+      location_logs: {
+        Row: {
+          accuracy: number | null
+          battery_charging: boolean | null
+          battery_percent: number | null
+          created_at: string
+          id: string
+          latitude: number
+          logged_at: string
+          longitude: number
+          source: string
+          user_id: string
+          visit_id: string | null
+        }
+        Insert: {
+          accuracy?: number | null
+          battery_charging?: boolean | null
+          battery_percent?: number | null
+          created_at?: string
+          id?: string
+          latitude: number
+          logged_at?: string
+          longitude: number
+          source?: string
+          user_id: string
+          visit_id?: string | null
+        }
+        Update: {
+          accuracy?: number | null
+          battery_charging?: boolean | null
+          battery_percent?: number | null
+          created_at?: string
+          id?: string
+          latitude?: number
+          logged_at?: string
+          longitude?: number
+          source?: string
+          user_id?: string
+          visit_id?: string | null
         }
         Relationships: []
       }
