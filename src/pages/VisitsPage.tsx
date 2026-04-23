@@ -320,11 +320,6 @@ const VisitsPage: React.FC = () => {
   const checkInMutation = useMutation({
     mutationFn: async (visitId: string) => {
       if (!coords) throw new Error('GPS location required');
-      if (coords.accuracy > GPS_TARGET_ACCURACY) {
-        throw new Error(
-          `GPS accuracy is ±${Math.round(coords.accuracy)}m. We need ±${GPS_TARGET_ACCURACY}m or better. Move to an open area and tap Get My Location again.`
-        );
-      }
 
       const visit = visits.find(v => v.id === visitId);
       if (!visit) throw new Error('Visit not found');
