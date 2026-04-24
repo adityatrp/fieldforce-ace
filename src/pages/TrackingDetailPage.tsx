@@ -152,12 +152,7 @@ const TrackingDetailPage: React.FC = () => {
   const latest = stats.latest;
   const isActive = !!punch && !punch.punched_out_at;
 
-  // Live "next ping in" countdown (5-min cadence) + "X seconds ago".
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  // Derived ping timing values from `now` ticker above.
   const lastPingMs = latest ? new Date(latest.logged_at).getTime() : null;
   const secondsSince = lastPingMs ? Math.max(0, Math.floor((now - lastPingMs) / 1000)) : null;
   const nextPingSec = lastPingMs ? Math.max(0, 300 - Math.floor((now - lastPingMs) / 1000)) : null;
