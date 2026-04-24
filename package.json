@@ -13,6 +13,12 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.21",
+    "@capacitor/android": "^6",
+    "@capacitor/cli": "^6",
+    "@capacitor/core": "^6",
+    "@capacitor/device": "^6",
+    "@capacitor/ios": "^6",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",

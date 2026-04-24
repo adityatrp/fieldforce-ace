@@ -13,6 +13,7 @@ import LeaderboardPage from "@/pages/LeaderboardPage";
 import TeamPage from "@/pages/TeamPage";
 import ReportsPage from "@/pages/ReportsPage";
 import TrackingPage from "@/pages/TrackingPage";
+import TrackingDetailPage from "@/pages/TrackingDetailPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,12 @@ const ProtectedTrackingPage = () => {
   const { role } = useAuth();
   if (role !== 'admin' && role !== 'team_lead') return <Navigate to="/" replace />;
   return <TrackingPage />;
+};
+
+const ProtectedTrackingDetail = () => {
+  const { role } = useAuth();
+  if (role !== 'admin' && role !== 'team_lead') return <Navigate to="/" replace />;
+  return <TrackingDetailPage />;
 };
 
 const AppRoutes = () => {
@@ -57,6 +64,7 @@ const AppRoutes = () => {
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/team" element={<ProtectedTeamPage />} />
         <Route path="/tracking" element={<ProtectedTrackingPage />} />
+        <Route path="/tracking/:userId" element={<ProtectedTrackingDetail />} />
         <Route path="/reports" element={<ProtectedReportsPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

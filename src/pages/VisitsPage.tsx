@@ -15,6 +15,8 @@ import SignedImage from '@/components/SignedImage';
 import { compressImage } from '@/lib/imageCompress';
 import CameraCapture from '@/components/CameraCapture';
 import { readBattery } from '@/lib/battery';
+import { startBackgroundTracking, stopBackgroundTracking } from '@/lib/backgroundTracker';
+import { upsertTodaySummary } from '@/lib/dailySummary';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -291,8 +293,10 @@ const VisitsPage: React.FC = () => {
           accuracy: todayPunch.punch_in_accuracy ?? 0,
         });
       }
+      // Resume background tracker if app was reloaded mid-day.
+      if (user) startBackgroundTracking(user.id);
     }
-  }, [todayPunch]);
+  }, [todayPunch, user]);
 
   const handleStartDay = useCallback(async () => {
     setPunchingIn(true);
@@ -320,6 +324,8 @@ const VisitsPage: React.FC = () => {
         source: 'punch_in',
       });
       queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
+      // Kick off the 5-min background tracker (native: works with screen off).
+      startBackgroundTracking(user!.id);
       toast({
         title: '🚀 Punched In!',
         description: `Tracking started (±${Math.round(loc.accuracy)}m). You can punch out at end of day.`,
@@ -355,6 +361,12 @@ const VisitsPage: React.FC = () => {
       });
       setDayStarted(false);
       setCurrentLocation(null);
+      // Stop background tracker and write the day's summary row.
+      await stopBackgroundTracking();
+      await upsertTodaySummary(user!.id, {
+        punched_in_at: todayPunch.punched_in_at,
+        punched_out_at: new Date().toISOString(),
+      });
       queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
       toast({ title: '👋 Punched Out', description: 'Tracking stopped. Have a good evening!' });
     } catch (err: any) {
