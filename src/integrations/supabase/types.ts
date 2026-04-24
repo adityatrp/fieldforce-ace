@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      attendance_daily_summary: {
+        Row: {
+          created_at: string
+          id: string
+          ping_count: number
+          punched_in_at: string | null
+          punched_out_at: string | null
+          total_active_visit_minutes: number
+          total_distance_km: number
+          total_idle_minutes: number
+          updated_at: string
+          user_id: string
+          work_date: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ping_count?: number
+          punched_in_at?: string | null
+          punched_out_at?: string | null
+          total_active_visit_minutes?: number
+          total_distance_km?: number
+          total_idle_minutes?: number
+          updated_at?: string
+          user_id: string
+          work_date: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ping_count?: number
+          punched_in_at?: string | null
+          punched_out_at?: string | null
+          total_active_visit_minutes?: number
+          total_distance_km?: number
+          total_idle_minutes?: number
+          updated_at?: string
+          user_id?: string
+          work_date?: string
+        }
+        Relationships: []
+      }
       attendance_punches: {
         Row: {
           battery_percent_in: number | null
