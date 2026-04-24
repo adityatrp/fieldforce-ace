@@ -4,10 +4,16 @@ import { isNativeApp } from '@/lib/native';
 
 // Ping every 5 minutes while punched in.
 const PING_INTERVAL_MS = 5 * 60 * 1000;
+// Check the wall-clock every 30s so we still fire roughly on time even if
+// the browser throttles setInterval in a backgrounded tab.
+const WEB_CHECK_INTERVAL_MS = 30 * 1000;
 
 let webIntervalId: ReturnType<typeof setInterval> | null = null;
+let webVisibilityHandler: (() => void) | null = null;
 let nativeWatcherId: string | null = null;
 let activeUserId: string | null = null;
+let lastWebPingTs = 0;
+let webTickInFlight = false;
 
 async function logPing(userId: string, lat: number, lng: number, accuracy: number | null) {
   const battery = await readBattery();
