@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  ArrowLeft, Battery, BatteryCharging, Clock, MapPin, ExternalLink, RefreshCw, Calendar, Route, History,
+  ArrowLeft, Battery, BatteryCharging, BatteryLow, Clock, MapPin, ExternalLink, RefreshCw, Calendar, Route, History, Radio, Navigation,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { computeIdleMinutes, formatMinutes, totalActiveVisitMinutes, totalDistanceKm } from '@/lib/distance';
