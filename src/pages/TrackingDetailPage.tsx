@@ -54,6 +54,8 @@ const TrackingDetailPage: React.FC = () => {
       return data || [];
     },
     enabled: !!userId,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 
   const { data: punch } = useQuery({
@@ -71,6 +73,8 @@ const TrackingDetailPage: React.FC = () => {
       return data;
     },
     enabled: !!userId,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 
   const { data: visits = [] } = useQuery({
@@ -86,6 +90,7 @@ const TrackingDetailPage: React.FC = () => {
       return data || [];
     },
     enabled: !!userId,
+    refetchOnWindowFocus: true,
   });
 
   const { data: history = [], refetch: refetchHistory } = useQuery({
@@ -127,6 +132,33 @@ const TrackingDetailPage: React.FC = () => {
     }).then(() => refetchHistory());
   }, [userId, user, logs.length, punch?.punched_in_at, punch?.punched_out_at, refetchHistory]);
 
+  useEffect(() => {
+    if (!userId || (role !== 'admin' && role !== 'team_lead' && user?.id !== userId)) return;
+
+    const channel = supabase
+      .channel(`tracking-detail-live-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'location_logs', filter: `user_id=eq.${userId}` },
+        () => {
+          qc.invalidateQueries({ queryKey: ['tracking-detail-logs', userId] });
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'attendance_punches', filter: `user_id=eq.${userId}` },
+        () => {
+          qc.invalidateQueries({ queryKey: ['tracking-detail-punch', userId] });
+          qc.invalidateQueries({ queryKey: ['tracking-detail-history', userId] });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, role, user?.id, qc]);
+
   const refresh = () => {
     refetchLogs();
     qc.invalidateQueries({ queryKey: ['tracking-detail-punch', userId] });
@@ -155,7 +187,9 @@ const TrackingDetailPage: React.FC = () => {
   // Derived ping timing values from `now` ticker above.
   const lastPingMs = latest ? new Date(latest.logged_at).getTime() : null;
   const secondsSince = lastPingMs ? Math.max(0, Math.floor((now - lastPingMs) / 1000)) : null;
-  const nextPingSec = lastPingMs ? Math.max(0, 300 - Math.floor((now - lastPingMs) / 1000)) : null;
+  const rawNextPingSec = lastPingMs ? 300 - Math.floor((now - lastPingMs) / 1000) : null;
+  const nextPingSec = rawNextPingSec != null ? Math.max(0, rawNextPingSec) : null;
+  const isPingOverdue = rawNextPingSec != null && rawNextPingSec < 0;
   const formatAgo = (s: number) => {
     if (s < 60) return `${s}s ago`;
     const m = Math.floor(s / 60);
@@ -255,7 +289,7 @@ const TrackingDetailPage: React.FC = () => {
                 {isActive && nextPingSec != null && (
                   <div className="ml-auto flex items-center gap-1.5 bg-primary-foreground/25 rounded-full px-2.5 py-1 font-mono font-semibold">
                     <Radio className="h-3 w-3 animate-pulse" />
-                    next {formatCountdown(nextPingSec)}
+                    {isPingOverdue ? `overdue ${formatAgo(Math.abs(rawNextPingSec!))}` : `next ${formatCountdown(nextPingSec)}`}
                   </div>
                 )}
               </div>
