@@ -134,6 +134,13 @@ const TrackingDetailPage: React.FC = () => {
     refetchHistory();
   };
 
+  // Live "next ping in" countdown (5-min cadence) + "X seconds ago".
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   if (role !== 'admin' && role !== 'team_lead' && user?.id !== userId) {
     return (
       <div className="text-center py-12 text-muted-foreground text-sm">
