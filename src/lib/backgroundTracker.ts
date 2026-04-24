@@ -49,9 +49,6 @@ export async function startBackgroundTracking(userId: string) {
   if (isNativeApp()) {
     try {
       const { registerPlugin } = await import('@capacitor/core');
-      const defs = await import('@capacitor-community/background-geolocation');
-      type Plugin = typeof defs extends { BackgroundGeolocationPlugin: infer _T } ? unknown : unknown;
-      void defs;
       const BackgroundGeolocation = registerPlugin<{
         addWatcher(
           options: {
@@ -68,7 +65,6 @@ export async function startBackgroundTracking(userId: string) {
         ): Promise<string>;
         removeWatcher(options: { id: string }): Promise<void>;
       }>('BackgroundGeolocation');
-      void ({} as Plugin);
       nativeWatcherId = await BackgroundGeolocation.addWatcher(
         {
           backgroundMessage: 'FieldForce is tracking your route while you are punched in.',
