@@ -15,13 +15,13 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/visits', icon: MapPin, label: 'Visits' },
+    ...(role === 'admin' || role === 'team_lead'
+      ? [{ to: '/tracking', icon: Route, label: 'Tracking' }]
+      : []),
     { to: '/expenses', icon: Receipt, label: 'Expenses' },
     { to: '/leaderboard', icon: Trophy, label: 'Board' },
     ...(role === 'admin' || role === 'team_lead'
       ? [{ to: '/team', icon: Users, label: 'Team' }]
-      : []),
-    ...(role === 'admin' || role === 'team_lead'
-      ? [{ to: '/tracking', icon: Route, label: 'Tracking' }]
       : []),
     ...(role === 'admin'
       ? [{ to: '/reports', icon: FileText, label: 'Reports' }]
