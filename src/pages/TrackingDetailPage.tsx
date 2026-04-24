@@ -145,6 +145,27 @@ const TrackingDetailPage: React.FC = () => {
   const latest = stats.latest;
   const isActive = !!punch && !punch.punched_out_at;
 
+  // Live "next ping in" countdown (5-min cadence) + "X seconds ago".
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const lastPingMs = latest ? new Date(latest.logged_at).getTime() : null;
+  const secondsSince = lastPingMs ? Math.max(0, Math.floor((now - lastPingMs) / 1000)) : null;
+  const nextPingSec = lastPingMs ? Math.max(0, 300 - Math.floor((now - lastPingMs) / 1000)) : null;
+  const formatAgo = (s: number) => {
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${s % 60}s ago`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m ago`;
+  };
+  const formatCountdown = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  const battPct = latest?.battery_percent ?? null;
+  const BatteryIcon = latest?.battery_charging ? BatteryCharging : (battPct != null && battPct <= 15 ? BatteryLow : Battery);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -168,11 +189,99 @@ const TrackingDetailPage: React.FC = () => {
             <p className="text-xs text-muted-foreground truncate">{profile?.team_name || 'No team'}</p>
           </div>
           {isActive ? (
-            <Badge className="bg-success/10 text-success border-success/20">Live</Badge>
+            <Badge className="bg-success/10 text-success border-success/20 gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
+              </span>
+              Live
+            </Badge>
           ) : (
             <Badge variant="outline">Offline</Badge>
           )}
         </CardContent>
+      </Card>
+
+      {/* HERO: Live location + battery (most important card on the page) */}
+      <Card className="rounded-2xl overflow-hidden border-primary/20 shadow-lg">
+        <div className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-9 w-9 rounded-full bg-primary-foreground/15 flex items-center justify-center shrink-0">
+                <Navigation className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-widest font-semibold opacity-80">Current Location</p>
+                <p className="text-[10px] opacity-70">Auto-pings every 5 min while punched in</p>
+              </div>
+            </div>
+            {battPct != null ? (
+              <div className="flex items-center gap-1.5 bg-primary-foreground/20 backdrop-blur rounded-full px-3 py-1.5 shrink-0">
+                <BatteryIcon className="h-4 w-4" />
+                <span className="font-bold text-sm">{battPct}%</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 bg-primary-foreground/10 rounded-full px-3 py-1.5 opacity-60 shrink-0">
+                <Battery className="h-4 w-4" />
+                <span className="text-xs">N/A</span>
+              </div>
+            )}
+          </div>
+
+          {latest ? (
+            <>
+              <div>
+                <p className="text-[10px] uppercase opacity-70 tracking-wide mb-1">Coordinates (13 dp)</p>
+                <p className="font-mono text-[13px] sm:text-sm bg-primary-foreground/15 backdrop-blur rounded-lg px-3 py-2.5 break-all leading-relaxed">
+                  {latest.latitude.toFixed(13)},<br />{latest.longitude.toFixed(13)}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <div className="flex items-center gap-1.5 bg-primary-foreground/15 rounded-full px-2.5 py-1">
+                  <Clock className="h-3 w-3" />
+                  <span className="font-medium">{secondsSince != null ? formatAgo(secondsSince) : '—'}</span>
+                </div>
+                {latest.accuracy != null && (
+                  <div className="bg-primary-foreground/15 rounded-full px-2.5 py-1 font-medium">
+                    ±{Math.round(latest.accuracy)}m
+                  </div>
+                )}
+                <div className="bg-primary-foreground/15 rounded-full px-2.5 py-1 capitalize font-medium">
+                  {String(latest.source).replace(/_/g, ' ')}
+                </div>
+                {isActive && nextPingSec != null && (
+                  <div className="ml-auto flex items-center gap-1.5 bg-primary-foreground/25 rounded-full px-2.5 py-1 font-mono font-semibold">
+                    <Radio className="h-3 w-3 animate-pulse" />
+                    next {formatCountdown(nextPingSec)}
+                  </div>
+                )}
+              </div>
+
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${latest.latitude},${latest.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+              >
+                <Button size="lg" variant="secondary" className="w-full rounded-xl gap-2 font-semibold shadow-md">
+                  <ExternalLink className="h-4 w-4" />
+                  Open in Google Maps
+                </Button>
+              </a>
+            </>
+          ) : (
+            <div className="text-center py-6 opacity-80">
+              <MapPin className="h-8 w-8 mx-auto mb-2 opacity-60" />
+              <p className="text-sm">No pings recorded yet today.</p>
+              <p className="text-xs opacity-70 mt-1">Pings start once the salesperson punches in.</p>
+            </div>
+          )}
+        </div>
+        <div className="px-4 py-2.5 bg-muted/30 flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">Pings received today</span>
+          <span className="font-bold">{logs.length}</span>
+        </div>
       </Card>
 
       {/* Big numbers: distance + idle */}
@@ -198,56 +307,6 @@ const TrackingDetailPage: React.FC = () => {
           </CardContent>
         </Card>
       </div>
-
-      {/* Latest backend location + battery */}
-      <Card className="rounded-2xl">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5" /> Latest in backend
-            </p>
-            {latest?.battery_percent !== null && latest?.battery_percent !== undefined && (
-              <span className="flex items-center gap-1 text-xs">
-                {latest.battery_charging ? (
-                  <BatteryCharging className="h-3.5 w-3.5 text-success" />
-                ) : (
-                  <Battery className={cn('h-3.5 w-3.5', latest.battery_percent <= 20 && 'text-destructive')} />
-                )}
-                <span className="font-semibold">{latest.battery_percent}%</span>
-              </span>
-            )}
-          </div>
-
-          {latest ? (
-            <>
-              <div className="font-mono text-sm bg-muted/40 rounded-lg px-3 py-2 break-all">
-                {latest.latitude.toFixed(13)}, {latest.longitude.toFixed(13)}
-              </div>
-              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>
-                  {new Date(latest.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  {latest.accuracy != null && ` • ±${Math.round(latest.accuracy)}m`}
-                  {' • '}
-                  <span className="capitalize">{String(latest.source).replace(/_/g, ' ')}</span>
-                </span>
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${latest.latitude},${latest.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex"
-                >
-                  <Button size="sm" variant="default" className="rounded-xl h-8 gap-1.5">
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Google Maps
-                  </Button>
-                </a>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">No pings recorded yet today.</p>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Punch in/out */}
       {punch && (
