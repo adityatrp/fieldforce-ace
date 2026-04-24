@@ -4,10 +4,16 @@ import { isNativeApp } from '@/lib/native';
 
 // Ping every 5 minutes while punched in.
 const PING_INTERVAL_MS = 5 * 60 * 1000;
+// Check the wall-clock every 30s so we still fire roughly on time even if
+// the browser throttles setInterval in a backgrounded tab.
+const WEB_CHECK_INTERVAL_MS = 30 * 1000;
 
 let webIntervalId: ReturnType<typeof setInterval> | null = null;
+let webVisibilityHandler: (() => void) | null = null;
 let nativeWatcherId: string | null = null;
 let activeUserId: string | null = null;
+let lastWebPingTs = 0;
+let webTickInFlight = false;
 
 async function logPing(userId: string, lat: number, lng: number, accuracy: number | null) {
   const battery = await readBattery();
@@ -92,24 +98,48 @@ export async function startBackgroundTracking(userId: string) {
     }
   }
 
-  // Web fallback — only runs while the tab is alive.
-  const tick = async () => {
-    if (!activeUserId) return;
+  // Web fallback — only runs while the tab is alive. We:
+  //  • fire an IMMEDIATE first ping (no 5-min wait on punch-in / resume)
+  //  • check wall-clock every 30s (survives Chrome's background throttling)
+  //  • catch up on visibility change (screen back on / tab refocus)
+  const tick = async (force = false) => {
+    if (!activeUserId || webTickInFlight) return;
+    const now = Date.now();
+    if (!force && now - lastWebPingTs < PING_INTERVAL_MS - 5000) return;
+    webTickInFlight = true;
     try {
       const pos = await getWebPosition();
       await logPing(activeUserId, pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      lastWebPingTs = Date.now();
     } catch {
       /* swallow — next tick will retry */
+    } finally {
+      webTickInFlight = false;
     }
   };
-  webIntervalId = setInterval(tick, PING_INTERVAL_MS);
+
+  // Immediate first ping so the timer doesn't sit at "Xm ago" for 5 minutes.
+  void tick(true);
+  webIntervalId = setInterval(() => { void tick(); }, WEB_CHECK_INTERVAL_MS);
+
+  webVisibilityHandler = () => {
+    if (document.visibilityState === 'visible') void tick();
+  };
+  document.addEventListener('visibilitychange', webVisibilityHandler);
+  window.addEventListener('focus', webVisibilityHandler);
 }
 
 export async function stopBackgroundTracking() {
   activeUserId = null;
+  lastWebPingTs = 0;
   if (webIntervalId) {
     clearInterval(webIntervalId);
     webIntervalId = null;
+  }
+  if (webVisibilityHandler) {
+    document.removeEventListener('visibilitychange', webVisibilityHandler);
+    window.removeEventListener('focus', webVisibilityHandler);
+    webVisibilityHandler = null;
   }
   if (nativeWatcherId) {
     try {
