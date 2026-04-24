@@ -48,8 +48,27 @@ export async function startBackgroundTracking(userId: string) {
 
   if (isNativeApp()) {
     try {
-      const mod = await import('@capacitor-community/background-geolocation');
-      const BackgroundGeolocation = mod.default;
+      const { registerPlugin } = await import('@capacitor/core');
+      const defs = await import('@capacitor-community/background-geolocation');
+      type Plugin = typeof defs extends { BackgroundGeolocationPlugin: infer _T } ? unknown : unknown;
+      void defs;
+      const BackgroundGeolocation = registerPlugin<{
+        addWatcher(
+          options: {
+            backgroundMessage?: string;
+            backgroundTitle?: string;
+            requestPermissions?: boolean;
+            stale?: boolean;
+            distanceFilter?: number;
+          },
+          callback: (
+            position?: { latitude: number; longitude: number; accuracy: number | null },
+            error?: { code?: string; message: string },
+          ) => void,
+        ): Promise<string>;
+        removeWatcher(options: { id: string }): Promise<void>;
+      }>('BackgroundGeolocation');
+      void ({} as Plugin);
       nativeWatcherId = await BackgroundGeolocation.addWatcher(
         {
           backgroundMessage: 'FieldForce is tracking your route while you are punched in.',
@@ -98,8 +117,11 @@ export async function stopBackgroundTracking() {
   }
   if (nativeWatcherId) {
     try {
-      const mod = await import('@capacitor-community/background-geolocation');
-      await mod.default.removeWatcher({ id: nativeWatcherId });
+      const { registerPlugin } = await import('@capacitor/core');
+      const BackgroundGeolocation = registerPlugin<{
+        removeWatcher(options: { id: string }): Promise<void>;
+      }>('BackgroundGeolocation');
+      await BackgroundGeolocation.removeWatcher({ id: nativeWatcherId });
     } catch {
       /* ignore */
     }
