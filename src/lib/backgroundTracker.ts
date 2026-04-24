@@ -49,7 +49,7 @@ export async function startBackgroundTracking(userId: string) {
   if (isNativeApp()) {
     try {
       const mod = await import('@capacitor-community/background-geolocation');
-      const BackgroundGeolocation = mod.BackgroundGeolocation;
+      const BackgroundGeolocation = mod.default;
       nativeWatcherId = await BackgroundGeolocation.addWatcher(
         {
           backgroundMessage: 'FieldForce is tracking your route while you are punched in.',
@@ -99,7 +99,7 @@ export async function stopBackgroundTracking() {
   if (nativeWatcherId) {
     try {
       const mod = await import('@capacitor-community/background-geolocation');
-      await mod.BackgroundGeolocation.removeWatcher({ id: nativeWatcherId });
+      await mod.default.removeWatcher({ id: nativeWatcherId });
     } catch {
       /* ignore */
     }
