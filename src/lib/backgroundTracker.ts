@@ -178,6 +178,11 @@ export async function stopBackgroundTracking() {
     window.removeEventListener('focus', webVisibilityHandler);
     webVisibilityHandler = null;
   }
+  if (webPageShowHandler) {
+    window.removeEventListener('pageshow', webPageShowHandler);
+    webPageShowHandler = null;
+  }
+  await releaseWakeLock();
   if (nativeWatcherId) {
     try {
       const { registerPlugin } = await import('@capacitor/core');
