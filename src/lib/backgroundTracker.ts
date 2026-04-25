@@ -10,10 +10,33 @@ const WEB_CHECK_INTERVAL_MS = 30 * 1000;
 
 let webIntervalId: ReturnType<typeof setInterval> | null = null;
 let webVisibilityHandler: (() => void) | null = null;
+let webPageShowHandler: (() => void) | null = null;
 let nativeWatcherId: string | null = null;
 let activeUserId: string | null = null;
 let lastWebPingTs = 0;
 let webTickInFlight = false;
+let wakeLock: { release: () => Promise<void> } | null = null;
+
+async function requestWakeLock() {
+  try {
+    const nav = navigator as unknown as {
+      wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> };
+    };
+    if (!nav.wakeLock?.request) return;
+    wakeLock = await nav.wakeLock.request('screen');
+  } catch {
+    /* user may have denied or browser unsupported — that's fine */
+  }
+}
+
+async function releaseWakeLock() {
+  try {
+    await wakeLock?.release();
+  } catch {
+    /* ignore */
+  }
+  wakeLock = null;
+}
 
 async function logPing(userId: string, lat: number, lng: number, accuracy: number | null) {
   const battery = await readBattery();
@@ -122,11 +145,25 @@ export async function startBackgroundTracking(userId: string) {
   void tick(true);
   webIntervalId = setInterval(() => { void tick(); }, WEB_CHECK_INTERVAL_MS);
 
+  // Best-effort: keep the screen awake so the JS timer keeps running on
+  // mobile browsers (prevents Chrome from suspending the tab when the user
+  // switches apps but leaves the screen on). Auto-released by the browser
+  // when the tab is hidden — we re-acquire on visibilitychange below.
+  void requestWakeLock();
+
   webVisibilityHandler = () => {
-    if (document.visibilityState === 'visible') void tick();
+    if (document.visibilityState === 'visible') {
+      void tick();
+      void requestWakeLock();
+    }
   };
   document.addEventListener('visibilitychange', webVisibilityHandler);
   window.addEventListener('focus', webVisibilityHandler);
+
+  // Fires when the page is restored from the back-forward cache (e.g.,
+  // user swipes back to the app on Android Chrome) — guarantees a catch-up.
+  webPageShowHandler = () => { void tick(); void requestWakeLock(); };
+  window.addEventListener('pageshow', webPageShowHandler);
 }
 
 export async function stopBackgroundTracking() {
@@ -141,6 +178,11 @@ export async function stopBackgroundTracking() {
     window.removeEventListener('focus', webVisibilityHandler);
     webVisibilityHandler = null;
   }
+  if (webPageShowHandler) {
+    window.removeEventListener('pageshow', webPageShowHandler);
+    webPageShowHandler = null;
+  }
+  await releaseWakeLock();
   if (nativeWatcherId) {
     try {
       const { registerPlugin } = await import('@capacitor/core');

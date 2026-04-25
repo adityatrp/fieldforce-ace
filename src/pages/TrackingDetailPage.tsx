@@ -185,11 +185,19 @@ const TrackingDetailPage: React.FC = () => {
   const isActive = !!punch && !punch.punched_out_at;
 
   // Derived ping timing values from `now` ticker above.
+  // When NOT punched in: timer parks at "next 5:00" / "0s ago" — no overdue label.
   const lastPingMs = latest ? new Date(latest.logged_at).getTime() : null;
-  const secondsSince = lastPingMs ? Math.max(0, Math.floor((now - lastPingMs) / 1000)) : null;
-  const rawNextPingSec = lastPingMs ? 300 - Math.floor((now - lastPingMs) / 1000) : null;
-  const nextPingSec = rawNextPingSec != null ? Math.max(0, rawNextPingSec) : null;
-  const isPingOverdue = rawNextPingSec != null && rawNextPingSec < 0;
+  const secondsSince = isActive && lastPingMs
+    ? Math.max(0, Math.floor((now - lastPingMs) / 1000))
+    : null;
+  const rawNextPingSec = isActive && lastPingMs
+    ? 300 - Math.floor((now - lastPingMs) / 1000)
+    : null;
+  const nextPingSec = isActive
+    ? (rawNextPingSec != null ? Math.max(0, rawNextPingSec) : 300)
+    : 300;
+  // Only flag overdue while punched in.
+  const isPingOverdue = isActive && rawNextPingSec != null && rawNextPingSec < 0;
   const formatAgo = (s: number) => {
     if (s < 60) return `${s}s ago`;
     const m = Math.floor(s / 60);
@@ -276,7 +284,9 @@ const TrackingDetailPage: React.FC = () => {
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <div className="flex items-center gap-1.5 bg-primary-foreground/15 rounded-full px-2.5 py-1">
                   <Clock className="h-3 w-3" />
-                  <span className="font-medium">{secondsSince != null ? formatAgo(secondsSince) : '—'}</span>
+                  <span className="font-medium">
+                    {isActive ? (secondsSince != null ? formatAgo(secondsSince) : '—') : '—'}
+                  </span>
                 </div>
                 {latest.accuracy != null && (
                   <div className="bg-primary-foreground/15 rounded-full px-2.5 py-1 font-medium">
@@ -286,10 +296,12 @@ const TrackingDetailPage: React.FC = () => {
                 <div className="bg-primary-foreground/15 rounded-full px-2.5 py-1 capitalize font-medium">
                   {String(latest.source).replace(/_/g, ' ')}
                 </div>
-                {isActive && nextPingSec != null && (
+                {nextPingSec != null && (
                   <div className="ml-auto flex items-center gap-1.5 bg-primary-foreground/25 rounded-full px-2.5 py-1 font-mono font-semibold">
-                    <Radio className="h-3 w-3 animate-pulse" />
-                    {isPingOverdue ? `overdue ${formatAgo(Math.abs(rawNextPingSec!))}` : `next ${formatCountdown(nextPingSec)}`}
+                    <Radio className={cn('h-3 w-3', isActive && 'animate-pulse')} />
+                    {isPingOverdue
+                      ? `overdue ${formatAgo(Math.abs(rawNextPingSec!))}`
+                      : `next ${formatCountdown(nextPingSec)}`}
                   </div>
                 )}
               </div>
