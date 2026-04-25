@@ -70,7 +70,7 @@ const TrackingPage: React.FC = () => {
   });
 
   const { data: logs = [], refetch: refetchLogs, isFetching: fetchingLogs } = useQuery({
-    queryKey: ['tracking-today-logs'],
+    queryKey: ['tracking-today-logs', startISO],
     queryFn: async () => {
       const { data } = await supabase
         .from('location_logs')
@@ -86,7 +86,7 @@ const TrackingPage: React.FC = () => {
   });
 
   const { data: punches = [], refetch: refetchPunches } = useQuery({
-    queryKey: ['tracking-today-punches'],
+    queryKey: ['tracking-today-punches', startISO],
     queryFn: async () => {
       const { data } = await supabase
         .from('attendance_punches')
