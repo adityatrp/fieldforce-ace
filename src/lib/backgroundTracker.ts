@@ -145,11 +145,25 @@ export async function startBackgroundTracking(userId: string) {
   void tick(true);
   webIntervalId = setInterval(() => { void tick(); }, WEB_CHECK_INTERVAL_MS);
 
+  // Best-effort: keep the screen awake so the JS timer keeps running on
+  // mobile browsers (prevents Chrome from suspending the tab when the user
+  // switches apps but leaves the screen on). Auto-released by the browser
+  // when the tab is hidden — we re-acquire on visibilitychange below.
+  void requestWakeLock();
+
   webVisibilityHandler = () => {
-    if (document.visibilityState === 'visible') void tick();
+    if (document.visibilityState === 'visible') {
+      void tick();
+      void requestWakeLock();
+    }
   };
   document.addEventListener('visibilitychange', webVisibilityHandler);
   window.addEventListener('focus', webVisibilityHandler);
+
+  // Fires when the page is restored from the back-forward cache (e.g.,
+  // user swipes back to the app on Android Chrome) — guarantees a catch-up.
+  webPageShowHandler = () => { void tick(); void requestWakeLock(); };
+  window.addEventListener('pageshow', webPageShowHandler);
 }
 
 export async function stopBackgroundTracking() {
