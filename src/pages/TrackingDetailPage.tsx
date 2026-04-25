@@ -294,10 +294,12 @@ const TrackingDetailPage: React.FC = () => {
                 <div className="bg-primary-foreground/15 rounded-full px-2.5 py-1 capitalize font-medium">
                   {String(latest.source).replace(/_/g, ' ')}
                 </div>
-                {isActive && nextPingSec != null && (
+                {nextPingSec != null && (
                   <div className="ml-auto flex items-center gap-1.5 bg-primary-foreground/25 rounded-full px-2.5 py-1 font-mono font-semibold">
-                    <Radio className="h-3 w-3 animate-pulse" />
-                    {isPingOverdue ? `overdue ${formatAgo(Math.abs(rawNextPingSec!))}` : `next ${formatCountdown(nextPingSec)}`}
+                    <Radio className={cn('h-3 w-3', isActive && 'animate-pulse')} />
+                    {isPingOverdue
+                      ? `overdue ${formatAgo(Math.abs(rawNextPingSec!))}`
+                      : `next ${formatCountdown(nextPingSec)}`}
                   </div>
                 )}
               </div>
