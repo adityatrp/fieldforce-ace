@@ -187,6 +187,58 @@
     animation: fade-in 0.2s ease-out;
   }
 
+  /* ─── Native Android (mobile) normalisation ─────────────────────────── */
+  @media (max-width: 1023px) {
+    /* The global app top-bar already shows the page name. Hide the duplicate
+       per-page H1 so layouts match and headlines never look stacked. */
+    .page-header {
+      display: none !important;
+    }
+    /* When .page-header is hidden, the wrapper around it + subtitle keeps a
+       small empty box (margin from space-y-*). Remove that visual gap by
+       collapsing the subtitle's top spacing. */
+    .page-header + p {
+      margin-top: 0 !important;
+    }
+
+    /* Stat-card labels: clamp to two lines, no overflow, smaller weight */
+    .stat-card p:first-of-type {
+      font-size: 0.75rem;       /* 12px */
+      line-height: 1rem;
+      font-weight: 500;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-height: 2rem;
+    }
+
+    /* Stat-card numbers — slightly smaller so 4-digit numbers fit on small screens */
+    .stat-card p.text-2xl {
+      font-size: 1.375rem;      /* 22px */
+      line-height: 1.75rem;
+    }
+
+    /* Page sections breathe a bit less on mobile */
+    .space-y-6 > * + * { margin-top: 1rem !important; }
+    .space-y-5 > * + * { margin-top: 0.875rem !important; }
+
+    /* Buttons sized "lg" feel oversized in mobile dialogs/headers — cap them */
+    button[class*="h-12"] {
+      height: 2.75rem !important;
+    }
+
+    /* Tap targets — every interactive control on mobile should be ≥40px */
+    button, a[role="button"], [role="tab"] {
+      min-height: 2.5rem;
+    }
+  }
+
+  /* Mobile-first Android-feel app top-bar elevation when scrolled */
+  .app-topbar {
+    box-shadow: 0 1px 0 0 hsl(var(--border) / 0.6);
+  }
+
   /* Bottom sheet style dialogs on mobile */
   @media (max-width: 639px) {
     [role="dialog"] {
