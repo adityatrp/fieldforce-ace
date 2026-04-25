@@ -17,6 +17,7 @@ import CameraCapture from '@/components/CameraCapture';
 import { readBattery } from '@/lib/battery';
 import { startBackgroundTracking, stopBackgroundTracking } from '@/lib/backgroundTracker';
 import { upsertTodaySummary } from '@/lib/dailySummary';
+import { workdayBounds } from '@/lib/workday';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
