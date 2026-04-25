@@ -723,8 +723,8 @@ const VisitsPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Daily Punch In/Out for salesperson */}
-      {role === 'salesperson' && !dayStarted && (
+      {/* Daily Punch In/Out for salesperson — once per workday (resets at 5 AM) */}
+      {role === 'salesperson' && !dayStarted && !todayPunch?.punched_out_at && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4">
             <div className="flex items-center gap-4">
@@ -734,7 +734,7 @@ const VisitsPage: React.FC = () => {
               <div className="flex-1">
                 <p className="font-semibold text-sm">Punch In for the Day</p>
                 <p className="text-xs text-muted-foreground">
-                  Once punched in, your location is tracked at every visit check-in until you punch out.
+                  One punch in & out per day. Resets at 5:00 AM.
                 </p>
               </div>
               <Button
@@ -767,6 +767,20 @@ const VisitsPage: React.FC = () => {
           >
             {punchingIn ? '…' : 'Punch Out'}
           </Button>
+        </div>
+      )}
+
+      {/* Day completed — already punched in & out today */}
+      {role === 'salesperson' && !dayStarted && todayPunch?.punched_out_at && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted text-muted-foreground text-sm font-medium">
+          <CheckCircle2 className="h-4 w-4" />
+          <span>
+            Day completed •{' '}
+            {new Date(todayPunch.punched_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {' → '}
+            {new Date(todayPunch.punched_out_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <span className="ml-auto text-xs">Resets 5:00 AM</span>
         </div>
       )}
 
