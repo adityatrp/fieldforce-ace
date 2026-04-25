@@ -284,7 +284,9 @@ const TrackingDetailPage: React.FC = () => {
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <div className="flex items-center gap-1.5 bg-primary-foreground/15 rounded-full px-2.5 py-1">
                   <Clock className="h-3 w-3" />
-                  <span className="font-medium">{secondsSince != null ? formatAgo(secondsSince) : '—'}</span>
+                  <span className="font-medium">
+                    {isActive ? (secondsSince != null ? formatAgo(secondsSince) : '—') : '—'}
+                  </span>
                 </div>
                 {latest.accuracy != null && (
                   <div className="bg-primary-foreground/15 rounded-full px-2.5 py-1 font-medium">
