@@ -147,43 +147,60 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 flex flex-col pb-[4.5rem] lg:pb-0">
-        {/* Top header */}
-        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b px-4 h-14 flex items-center gap-3 lg:px-6 safe-top">
-          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-foreground native-btn p-1">
-            <Menu className="h-5 w-5" />
-          </button>
-          <h2 className="font-semibold text-foreground text-base">
-            {navItems.find(n => n.to === location.pathname)?.label || 'Dashboard'}
-          </h2>
+      <main className="flex-1 min-w-0 flex flex-col pb-[5.5rem] lg:pb-0">
+        {/* Top app bar — Material 3 style on mobile, slim on desktop */}
+        <header className="app-topbar sticky top-0 z-30 bg-background/85 backdrop-blur-xl border-b safe-top">
+          <div className="flex items-center gap-2 px-4 lg:px-6 h-14">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden -ml-1 h-10 w-10 rounded-full flex items-center justify-center text-foreground native-btn hover:bg-muted/60 active:bg-muted"
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <h2 className="font-semibold text-foreground text-[17px] tracking-tight truncate flex-1">
+              {navItems.find(n => n.to === location.pathname)?.label || 'Dashboard'}
+            </h2>
+          </div>
         </header>
 
-        <div className="flex-1 p-4 lg:p-6 max-w-7xl mx-auto w-full animate-fade-in">
+        <div className="flex-1 px-4 py-4 lg:px-6 lg:py-6 max-w-7xl mx-auto w-full animate-fade-in">
           {children}
         </div>
       </main>
 
-      {/* Mobile Bottom Tab Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-xl border-t flex items-center justify-around px-1 py-1 safe-bottom lg:hidden">
-        {navItems.slice(0, 5).map(item => {
-          const isActive = location.pathname === item.to;
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={cn(
-                'flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl text-[10px] font-medium transition-all native-btn min-w-[3.5rem]',
-                isActive
-                  ? 'text-primary'
-                  : 'text-muted-foreground'
-              )}
-            >
-              <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
-              <span>{item.label}</span>
-              {isActive && <div className="w-1 h-1 rounded-full bg-primary mt-0.5" />}
-            </NavLink>
-          );
-        })}
+      {/* Mobile Bottom Tab Bar — Material 3 navigation bar */}
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border/60 lg:hidden"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        <div className="flex items-stretch justify-around px-1 pt-1.5 pb-1 h-[4.25rem]">
+          {navItems.slice(0, 5).map(item => {
+            const isActive = location.pathname === item.to;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={cn(
+                  'flex-1 flex flex-col items-center justify-start gap-1 py-1 native-btn select-none',
+                  isActive ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex items-center justify-center h-8 w-16 rounded-full transition-all duration-200',
+                    isActive ? 'bg-primary/15' : 'bg-transparent'
+                  )}
+                >
+                  <item.icon className={cn('h-[22px] w-[22px]', isActive && 'text-primary')} strokeWidth={isActive ? 2.4 : 2} />
+                </span>
+                <span className={cn('text-[11px] leading-none tracking-tight', isActive ? 'font-semibold' : 'font-medium')}>
+                  {item.label}
+                </span>
+              </NavLink>
+            );
+          })}
+        </div>
       </nav>
     </div>
   );
