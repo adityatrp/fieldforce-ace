@@ -185,11 +185,19 @@ const TrackingDetailPage: React.FC = () => {
   const isActive = !!punch && !punch.punched_out_at;
 
   // Derived ping timing values from `now` ticker above.
+  // When NOT punched in: timer parks at "next 5:00" / "0s ago" — no overdue label.
   const lastPingMs = latest ? new Date(latest.logged_at).getTime() : null;
-  const secondsSince = lastPingMs ? Math.max(0, Math.floor((now - lastPingMs) / 1000)) : null;
-  const rawNextPingSec = lastPingMs ? 300 - Math.floor((now - lastPingMs) / 1000) : null;
-  const nextPingSec = rawNextPingSec != null ? Math.max(0, rawNextPingSec) : null;
-  const isPingOverdue = rawNextPingSec != null && rawNextPingSec < 0;
+  const secondsSince = isActive && lastPingMs
+    ? Math.max(0, Math.floor((now - lastPingMs) / 1000))
+    : null;
+  const rawNextPingSec = isActive && lastPingMs
+    ? 300 - Math.floor((now - lastPingMs) / 1000)
+    : null;
+  const nextPingSec = isActive
+    ? (rawNextPingSec != null ? Math.max(0, rawNextPingSec) : 300)
+    : 300;
+  // Only flag overdue while punched in.
+  const isPingOverdue = isActive && rawNextPingSec != null && rawNextPingSec < 0;
   const formatAgo = (s: number) => {
     if (s < 60) return `${s}s ago`;
     const m = Math.floor(s / 60);
