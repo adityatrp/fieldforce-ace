@@ -264,18 +264,18 @@ const VisitsPage: React.FC = () => {
     })();
   }, [visits, user, queryClient]);
 
-  // Today's attendance: hydrate dayStarted from DB
+  // Today's attendance: workday window is 5 AM → 5 AM (not midnight).
   const { data: todayPunch } = useQuery({
     queryKey: ['attendance-today', user?.id],
     queryFn: async () => {
       if (!user) return null;
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
+      const { start, end } = workdayBounds();
       const { data } = await supabase
         .from('attendance_punches')
         .select('*')
         .eq('user_id', user.id)
-        .gte('punched_in_at', startOfDay.toISOString())
+        .gte('punched_in_at', start.toISOString())
+        .lt('punched_in_at', end.toISOString())
         .order('punched_in_at', { ascending: false })
         .limit(1)
         .maybeSingle();
