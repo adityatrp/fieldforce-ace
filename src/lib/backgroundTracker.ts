@@ -10,10 +10,33 @@ const WEB_CHECK_INTERVAL_MS = 30 * 1000;
 
 let webIntervalId: ReturnType<typeof setInterval> | null = null;
 let webVisibilityHandler: (() => void) | null = null;
+let webPageShowHandler: (() => void) | null = null;
 let nativeWatcherId: string | null = null;
 let activeUserId: string | null = null;
 let lastWebPingTs = 0;
 let webTickInFlight = false;
+let wakeLock: { release: () => Promise<void> } | null = null;
+
+async function requestWakeLock() {
+  try {
+    const nav = navigator as unknown as {
+      wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> };
+    };
+    if (!nav.wakeLock?.request) return;
+    wakeLock = await nav.wakeLock.request('screen');
+  } catch {
+    /* user may have denied or browser unsupported — that's fine */
+  }
+}
+
+async function releaseWakeLock() {
+  try {
+    await wakeLock?.release();
+  } catch {
+    /* ignore */
+  }
+  wakeLock = null;
+}
 
 async function logPing(userId: string, lat: number, lng: number, accuracy: number | null) {
   const battery = await readBattery();
