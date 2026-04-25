@@ -347,7 +347,7 @@ const VisitsPage: React.FC = () => {
     } finally {
       setPunchingIn(false);
     }
-  }, [toast, user, queryClient]);
+  }, [toast, user, queryClient, todayPunch]);
 
   const handleEndDay = useCallback(async () => {
     if (!todayPunch || todayPunch.punched_out_at) return;
