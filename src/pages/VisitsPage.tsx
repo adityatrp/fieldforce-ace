@@ -300,6 +300,17 @@ const VisitsPage: React.FC = () => {
   }, [todayPunch, user]);
 
   const handleStartDay = useCallback(async () => {
+    // Once-per-workday guard: if a punch already exists in this 5 AM window, refuse.
+    if (todayPunch) {
+      toast({
+        title: 'Already punched in today',
+        description: todayPunch.punched_out_at
+          ? 'You have already completed your day. Resets at 5:00 AM.'
+          : "You're already punched in.",
+        variant: 'destructive',
+      });
+      return;
+    }
     setPunchingIn(true);
     try {
       const loc = await getPreciseLocation();
