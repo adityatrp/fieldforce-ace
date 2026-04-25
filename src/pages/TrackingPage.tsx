@@ -10,20 +10,14 @@ import { Battery, BatteryCharging, ChevronRight, RefreshCw, Smartphone } from 'l
 import { cn } from '@/lib/utils';
 import { totalDistanceKm } from '@/lib/distance';
 import { isNativeApp } from '@/lib/native';
-
-function dayBounds() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { startISO: start.toISOString(), endISO: end.toISOString() };
-}
+import { workdayBoundsISO } from '@/lib/workday';
 
 const TrackingPage: React.FC = () => {
   const { user, role } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { startISO, endISO } = useMemo(() => dayBounds(), []);
+  // Workday window: 5 AM → 5 AM (matches the salesperson punch-in/out reset).
+  const { startISO, endISO } = useMemo(() => workdayBoundsISO(), []);
 
   // For Team Leads: get the teams this lead belongs to, then everyone in those teams.
   // For Admins: fetch every profile.
