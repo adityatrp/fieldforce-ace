@@ -390,19 +390,19 @@ const Dashboard: React.FC = () => {
       {/* Sales target progress card — monthly target, only shown for this month / all time views */}
       {scopedTargetTotal > 0 && (period === 'this_month' || period === 'all_time') && (
         <Card className="border-primary/20">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Target className="h-5 w-5 text-primary" />
-                <p className="font-semibold text-sm">Sales Target Achieved (This Month)</p>
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Target className="h-5 w-5 text-primary shrink-0" />
+                <p className="font-semibold text-sm truncate">Sales Target</p>
               </div>
-              <p className="text-sm font-bold">
-                ₹{Math.round(scopedSalesAchieved).toLocaleString()} / ₹{scopedTargetTotal.toLocaleString()}
+              <p className="text-sm font-bold whitespace-nowrap">
+                ₹{Math.round(scopedSalesAchieved).toLocaleString()} <span className="text-muted-foreground font-medium">/ ₹{scopedTargetTotal.toLocaleString()}</span>
               </p>
             </div>
             <Progress value={Math.min(100, scopedTargetPct)} className="h-2" />
             <p className={`text-xs mt-2 font-medium ${scopedTargetPct >= 100 ? 'text-success' : 'text-muted-foreground'}`}>
-              {scopedTargetPct}% achieved {scopedTargetPct >= 100 ? '🎯' : ''}
+              {scopedTargetPct}% achieved {scopedTargetPct >= 100 ? '🎯' : ''} · This Month
             </p>
           </CardContent>
         </Card>
