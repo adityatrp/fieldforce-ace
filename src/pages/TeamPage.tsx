@@ -432,6 +432,23 @@ const TeamPage: React.FC = () => {
     onError: (err: Error) => toast({ title: 'Failed to promote user', description: err.message, variant: 'destructive' }),
   });
 
+  const orderApprovalMutation = useMutation({
+    mutationFn: async ({ visitId, status }: { visitId: string; status: 'approved' | 'rejected' }) => {
+      const { error } = await supabase.from('visits').update({
+        order_approval_status: status,
+        order_approved_by: user!.id,
+        order_approved_at: new Date().toISOString(),
+      }).eq('id', visitId);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['team-visits'] });
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
+      toast({ title: vars.status === 'approved' ? 'Order approved' : 'Order rejected' });
+    },
+    onError: (err: Error) => toast({ title: 'Could not update order', description: err.message, variant: 'destructive' }),
+  });
+
   const openEditDialog = (visit: typeof visits[0]) => {
     setEditVisitId(visit.id);
     setCustomerName(visit.customer_name);
