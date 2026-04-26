@@ -1082,7 +1082,23 @@ const TeamPage: React.FC = () => {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-sm">{v.customer_name}</p>
                         <Badge variant="outline" className={statusColor[v.visit_status] || 'bg-muted'}>{v.visit_status}</Badge>
-                        {v.order_received && <Badge variant="outline" className="bg-success/10 text-success">Order ✓</Badge>}
+                        {v.order_received && (() => {
+                          const s = (v as any).order_approval_status || 'pending';
+                          return (
+                            <Badge
+                              variant="outline"
+                              className={
+                                s === 'approved'
+                                  ? 'bg-success/10 text-success border-success/20'
+                                  : s === 'rejected'
+                                    ? 'bg-destructive/10 text-destructive border-destructive/20'
+                                    : 'bg-warning/10 text-warning border-warning/20'
+                              }
+                            >
+                              Order · {s}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                       {v.location_name && <p className="text-xs text-muted-foreground">📍 {v.location_name}</p>}
                       <p className="text-xs text-muted-foreground">
