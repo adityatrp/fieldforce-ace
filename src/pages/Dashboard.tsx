@@ -310,11 +310,65 @@ const Dashboard: React.FC = () => {
 
   const scopedSalesAchieved = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser.approved[uid] || 0), 0);
   const scopedSalesPending = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser.pending[uid] || 0), 0);
-  const scopedTargetTotal = scopedUserIds.reduce((s, uid) => {
-    const t = targets.find(t => t.user_id === uid);
-    return s + (t ? Number(t.target_value) : 0);
-  }, 0);
-  const scopedTargetPct = scopedTargetTotal > 0 ? Math.round((scopedSalesAchieved / scopedTargetTotal) * 100) : 0;
+
+  // ── Per-period target progress (monthly + weekly + daily can coexist) ──────
+  const todayStart = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  const tomorrowStart = useMemo(() => { const d = new Date(todayStart); d.setDate(d.getDate() + 1); return d; }, [todayStart]);
+  const weekStart = useMemo(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const offset = (day + 6) % 7;
+    d.setDate(d.getDate() - offset);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+  const weekEnd = useMemo(() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); return d; }, [weekStart]);
+
+  const salesInRange = (uid: string, from: Date, to: Date): number => {
+    let total = 0;
+    const verifiedInRange = new Map<string, any>();
+    visits
+      .filter(v => v.assigned_to === uid && v.visit_status === 'verified')
+      .filter(v => { const t = new Date(v.checked_in_at); return t >= from && t < to; })
+      .forEach(v => verifiedInRange.set(v.id, v));
+    orderItems.forEach((oi: any) => {
+      const v = verifiedInRange.get(oi.visit_id);
+      if (!v) return;
+      const status = (v as any).order_approval_status || 'pending';
+      if (status !== 'approved') return;
+      total += Number(oi.price_at_order) * Number(oi.quantity);
+    });
+    return total;
+  };
+
+  const todayISO = todayStart.toISOString().slice(0, 10);
+  const weekISO = weekStart.toISOString().slice(0, 10);
+
+  type PeriodCard = { period: 'daily' | 'weekly' | 'monthly'; label: string; achieved: number; total: number; pct: number };
+  const periodCards: PeriodCard[] = useMemo(() => {
+    const out: PeriodCard[] = [];
+    const build = (period: 'daily' | 'weekly' | 'monthly', label: string, from: Date, to: Date, periodStart: string | null) => {
+      const total = scopedUserIds.reduce((s, uid) => {
+        const t = targets.find(t =>
+          t.user_id === uid && t.period === period && (((t as any).period_start || null) === periodStart),
+        );
+        return s + (t ? Number(t.target_value) : 0);
+      }, 0);
+      if (total <= 0) return;
+      const achieved = scopedUserIds.reduce((s, uid) => s + salesInRange(uid, from, to), 0);
+      const pct = Math.round((achieved / total) * 100);
+      out.push({ period, label, achieved, total, pct });
+    };
+    build('monthly', 'This Month', monthStart, monthEnd, null);
+    build('weekly', 'This Week', weekStart, weekEnd, weekISO);
+    build('daily', 'Today', todayStart, tomorrowStart, todayISO);
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedUserIds, targets, visits, orderItems, monthStart, monthEnd, weekStart, weekEnd, todayStart, tomorrowStart]);
+
+  // Back-compat headline numbers (monthly view)
+  const scopedTargetTotal = periodCards.find(p => p.period === 'monthly')?.total || 0;
+  const scopedTargetPct = periodCards.find(p => p.period === 'monthly')?.pct || 0;
 
   // End-of-month non-achievers (only show late in month or after month end)
   const dayOfMonth = new Date().getDate();
