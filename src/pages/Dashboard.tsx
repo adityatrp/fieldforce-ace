@@ -327,7 +327,7 @@ const Dashboard: React.FC = () => {
     return spIds.map(uid => {
       const target = targets.find(t => t.user_id === uid);
       const targetVal = target ? Number(target.target_value) : 0;
-      const achieved = monthSalesByUser[uid] || 0;
+      const achieved = monthSalesByUser.approved[uid] || 0;
       const pct = targetVal > 0 ? Math.round((achieved / targetVal) * 100) : 0;
       const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
       const membership = teamMembers.find(tm => tm.user_id === uid);
