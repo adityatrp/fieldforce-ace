@@ -450,30 +450,34 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      {/* Sales target progress card — monthly target, only shown for this month / all time views */}
-      {scopedTargetTotal > 0 && (period === 'this_month' || period === 'all_time') && (
-        <Card className="border-primary/20">
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <Target className="h-5 w-5 text-primary shrink-0" />
-                <p className="font-semibold text-sm truncate">Sales Target</p>
-              </div>
-              <p className="text-sm font-bold whitespace-nowrap">
-                ₹{Math.round(scopedSalesAchieved).toLocaleString()} <span className="text-muted-foreground font-medium">/ ₹{scopedTargetTotal.toLocaleString()}</span>
-              </p>
-            </div>
-            <Progress value={Math.min(100, scopedTargetPct)} className="h-2" />
-            <p className={`text-xs mt-2 font-medium ${scopedTargetPct >= 100 ? 'text-success' : 'text-muted-foreground'}`}>
-              {scopedTargetPct}% achieved {scopedTargetPct >= 100 ? '🎯' : ''} · This Month
-            </p>
-            {scopedSalesPending > 0 && (
-              <p className="text-xs mt-1 text-warning">
-                ₹{Math.round(scopedSalesPending).toLocaleString()} pending TL approval
-              </p>
-            )}
-          </CardContent>
-        </Card>
+      {/* Sales target progress — one card per active period (monthly/weekly/daily) */}
+      {periodCards.length > 0 && (period === 'this_month' || period === 'this_week' || period === 'all_time') && (
+        <div className={`grid gap-3 ${periodCards.length > 1 ? 'sm:grid-cols-2 lg:grid-cols-3' : ''}`}>
+          {periodCards.map(pc => (
+            <Card key={pc.period} className="border-primary/20">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <Target className="h-5 w-5 text-primary shrink-0" />
+                    <p className="font-semibold text-sm truncate">{pc.label} Target</p>
+                  </div>
+                  <p className="text-sm font-bold whitespace-nowrap">
+                    ₹{Math.round(pc.achieved).toLocaleString()} <span className="text-muted-foreground font-medium">/ ₹{pc.total.toLocaleString()}</span>
+                  </p>
+                </div>
+                <Progress value={Math.min(100, pc.pct)} className="h-2" />
+                <p className={`text-xs mt-2 font-medium ${pc.pct >= 100 ? 'text-success' : 'text-muted-foreground'}`}>
+                  {pc.pct}% achieved {pc.pct >= 100 ? '🎯' : ''} · {pc.label}
+                </p>
+                {pc.period === 'monthly' && scopedSalesPending > 0 && (
+                  <p className="text-xs mt-1 text-warning">
+                    ₹{Math.round(scopedSalesPending).toLocaleString()} pending TL approval
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
