@@ -754,20 +754,39 @@ const TeamPage: React.FC = () => {
       {/* Set Target Dialog */}
       <Dialog open={targetOpen} onOpenChange={setTargetOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Set Monthly Target for Team</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Set Sales Target for Team</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-2">
             <p className="text-sm text-muted-foreground">
-              This will set the same monthly target for all {salespersons.length} salesperson(s) in your team.
+              Choose a period and amount. The same target is applied to all {salespersons.length} salesperson(s) in your team.
             </p>
+            <div className="space-y-2">
+              <Label>Period</Label>
+              <Select value={teamTargetPeriod} onValueChange={(v: any) => setTeamTargetPeriod(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily (today)</SelectItem>
+                  <SelectItem value="weekly">Weekly (this week, Mon–Sun)</SelectItem>
+                  <SelectItem value="monthly">Monthly (ongoing)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Daily / weekly targets are scoped to the current window — set a fresh one each period.
+              </p>
+            </div>
             {salespersons.length > 0 && (
-              <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1">
+              <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1 max-h-40 overflow-y-auto">
                 <p className="font-medium">Current team members:</p>
                 {salespersons.map(sp => {
-                  const existing = targets.find(t => t.user_id === sp.user_id);
+                  const ps = computePeriodStart(teamTargetPeriod);
+                  const existing = targets.find(t =>
+                    t.user_id === sp.user_id &&
+                    t.period === teamTargetPeriod &&
+                    (((t as any).period_start || null) === ps),
+                  );
                   return (
                     <div key={sp.user_id} className="flex justify-between">
-                      <span>{sp.full_name || sp.email}</span>
-                      <span className="text-muted-foreground">
+                      <span className="truncate">{sp.full_name || sp.email}</span>
+                      <span className="text-muted-foreground shrink-0 ml-2">
                         {existing ? `Current: ₹${Number(existing.target_value).toLocaleString()}` : 'No target'}
                       </span>
                     </div>
@@ -776,7 +795,7 @@ const TeamPage: React.FC = () => {
               </div>
             )}
             <div className="space-y-2">
-              <Label>Monthly Target Amount (₹)</Label>
+              <Label>{teamTargetPeriod[0].toUpperCase() + teamTargetPeriod.slice(1)} Target Amount (₹)</Label>
               <Input
                 type="number"
                 value={teamTargetValue}
@@ -790,7 +809,7 @@ const TeamPage: React.FC = () => {
               disabled={!teamTargetValue || setTeamTargetMutation.isPending}
               onClick={() => setTeamTargetMutation.mutate()}
             >
-              {setTeamTargetMutation.isPending ? 'Setting targets...' : `Set Target for ${salespersons.length} Members`}
+              {setTeamTargetMutation.isPending ? 'Setting targets...' : `Set ${teamTargetPeriod} target for ${salespersons.length} members`}
             </Button>
           </div>
         </DialogContent>
