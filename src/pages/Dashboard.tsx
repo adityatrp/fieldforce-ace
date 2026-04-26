@@ -276,19 +276,24 @@ const Dashboard: React.FC = () => {
   }, [visits]);
 
   const monthSalesByUser = useMemo(() => {
-    const verifiedThisMonth = new Set(
-      visits
-        .filter(v => v.visit_status === 'verified' && new Date(v.checked_in_at) >= monthStart && new Date(v.checked_in_at) < monthEnd)
-        .map(v => v.id)
-    );
-    const totals: Record<string, number> = {};
+    const verifiedThisMonth = new Map<string, any>();
+    visits
+      .filter(v => v.visit_status === 'verified' && new Date(v.checked_in_at) >= monthStart && new Date(v.checked_in_at) < monthEnd)
+      .forEach(v => verifiedThisMonth.set(v.id, v));
+    const approved: Record<string, number> = {};
+    const pending: Record<string, number> = {};
     orderItems.forEach((oi: any) => {
-      if (!verifiedThisMonth.has(oi.visit_id)) return;
+      const v = verifiedThisMonth.get(oi.visit_id);
+      if (!v) return;
       const uid = visitIdToUser[oi.visit_id];
       if (!uid) return;
-      totals[uid] = (totals[uid] || 0) + Number(oi.price_at_order) * Number(oi.quantity);
+      const status = (v as any).order_approval_status || 'pending';
+      if (status === 'rejected') return;
+      const amt = Number(oi.price_at_order) * Number(oi.quantity);
+      if (status === 'approved') approved[uid] = (approved[uid] || 0) + amt;
+      else pending[uid] = (pending[uid] || 0) + amt;
     });
-    return totals;
+    return { approved, pending };
   }, [orderItems, visits, monthStart, monthEnd, visitIdToUser]);
 
   // Scoped sales for the headline card
@@ -300,7 +305,8 @@ const Dashboard: React.FC = () => {
     return roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
   }, [selectedSP, role, user, myTeamMemberIds, adminTeamMemberIds, roles]);
 
-  const scopedSalesAchieved = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser[uid] || 0), 0);
+  const scopedSalesAchieved = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser.approved[uid] || 0), 0);
+  const scopedSalesPending = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser.pending[uid] || 0), 0);
   const scopedTargetTotal = scopedUserIds.reduce((s, uid) => {
     const t = targets.find(t => t.user_id === uid);
     return s + (t ? Number(t.target_value) : 0);
