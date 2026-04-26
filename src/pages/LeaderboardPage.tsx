@@ -87,7 +87,7 @@ const LeaderboardPage: React.FC = () => {
         const userTarget = targets.find(t => t.user_id === p.user_id);
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         const thisWeek = userVisits.filter(v => new Date(v.checked_in_at) >= weekAgo);
-        const orders = userVisits.filter(v => v.order_received).length;
+        const orders = userVisits.filter(v => v.order_received && (((v as any).order_approval_status || 'pending') === 'approved')).length;
 
         const workedMs = userVisits.reduce((sum, v) => {
           if (v.checked_out_at) {
@@ -121,7 +121,7 @@ const LeaderboardPage: React.FC = () => {
     return teams.map(t => {
       const memberIds = teamMembers.filter(tm => tm.team_id === t.id).map(tm => tm.user_id).filter(id => salespersonIds.includes(id));
       const teamVisits = visits.filter(v => memberIds.includes(v.assigned_to || '') && v.visit_status === 'verified');
-      const teamOrders = teamVisits.filter(v => v.order_received).length;
+      const teamOrders = teamVisits.filter(v => v.order_received && (((v as any).order_approval_status || 'pending') === 'approved')).length;
       return {
         teamId: t.id,
         teamName: t.name,
