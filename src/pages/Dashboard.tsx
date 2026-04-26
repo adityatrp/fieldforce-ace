@@ -609,7 +609,7 @@ const Dashboard: React.FC = () => {
               const spIds = (role === 'team_lead' ? myTeamMemberIds : roles.filter(r => r.role === 'salesperson').map(r => r.user_id));
               const ranked = spIds.map(uid => {
                 const uVisits = scopedVisits.filter(v => v.assigned_to === uid && v.visit_status === 'verified');
-                const orders = uVisits.filter(v => v.order_received).length;
+                const orders = uVisits.filter(v => v.order_received && (((v as any).order_approval_status || 'pending') === 'approved')).length;
                 const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
                 const target = targets.find(t => t.user_id === uid);
                 const achievedPct = target && Number(target.target_value) > 0
