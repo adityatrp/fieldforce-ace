@@ -117,14 +117,15 @@ const ReportsPage: React.FC = () => {
 
   const downloadTeamSummary = () => {
     const teams = [...new Set(salespersonIds.map(uid => getTeam(uid)))];
-    const headers = ['Team', 'Members', 'Total Visits', 'Verified Visits', 'Orders', 'Avg Visits/Person', 'Total Expenses (₹)'];
+    const headers = ['Team', 'Members', 'Total Visits', 'Verified Visits', 'Orders Approved', 'Orders Pending', 'Avg Visits/Person', 'Total Expenses (₹)'];
     const rows = teams.map(team => {
       const members = salespersonIds.filter(uid => getTeam(uid) === team);
       const tVisits = visits.filter(v => members.includes(v.assigned_to || ''));
       const verified = tVisits.filter(v => v.visit_status === 'verified');
-      const orders = verified.filter(v => v.order_received).length;
+      const ordersApproved = verified.filter(v => v.order_received && (((v as any).order_approval_status || 'pending') === 'approved')).length;
+      const ordersPending = verified.filter(v => v.order_received && (((v as any).order_approval_status || 'pending') === 'pending')).length;
       const teamExpenses = expenses.filter(e => members.includes(e.user_id)).reduce((s, e) => s + Number(e.amount), 0);
-      return [team, members.length.toString(), tVisits.length.toString(), verified.length.toString(), orders.toString(), members.length > 0 ? (verified.length / members.length).toFixed(1) : '0', teamExpenses.toLocaleString()];
+      return [team, members.length.toString(), tVisits.length.toString(), verified.length.toString(), ordersApproved.toString(), ordersPending.toString(), members.length > 0 ? (verified.length / members.length).toFixed(1) : '0', teamExpenses.toLocaleString()];
     });
     downloadCSV(`team_summary_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
     toast({ title: 'Report downloaded' });
