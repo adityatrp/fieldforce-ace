@@ -182,7 +182,10 @@ const Dashboard: React.FC = () => {
   const verifiedVisits = scopedVisits.filter(v => v.visit_status === 'verified');
   const failedVisits = scopedVisits.filter(v => v.visit_status === 'failed');
   const pendingVisits = scopedVisits.filter(v => v.visit_status === 'assigned');
-  const ordersReceived = verifiedVisits.filter(v => v.order_received).length;
+  const approvedOrderVisits = verifiedVisits.filter(v => v.order_received && ((v as any).order_approval_status || 'pending') === 'approved');
+  const pendingOrderVisits = verifiedVisits.filter(v => v.order_received && ((v as any).order_approval_status || 'pending') === 'pending');
+  const ordersReceived = approvedOrderVisits.length;
+  const ordersPending = pendingOrderVisits.length;
   const totalExpenses = scopedExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
   const approvedExpenses = scopedExpenses.filter(e => e.approval_status === 'approved').reduce((s, e) => s + Number(e.amount), 0);
   const pendingExpenses = scopedExpenses.filter(e => e.approval_status === 'pending' || e.approval_status === 'flagged').reduce((s, e) => s + Number(e.amount), 0);
@@ -276,19 +279,24 @@ const Dashboard: React.FC = () => {
   }, [visits]);
 
   const monthSalesByUser = useMemo(() => {
-    const verifiedThisMonth = new Set(
-      visits
-        .filter(v => v.visit_status === 'verified' && new Date(v.checked_in_at) >= monthStart && new Date(v.checked_in_at) < monthEnd)
-        .map(v => v.id)
-    );
-    const totals: Record<string, number> = {};
+    const verifiedThisMonth = new Map<string, any>();
+    visits
+      .filter(v => v.visit_status === 'verified' && new Date(v.checked_in_at) >= monthStart && new Date(v.checked_in_at) < monthEnd)
+      .forEach(v => verifiedThisMonth.set(v.id, v));
+    const approved: Record<string, number> = {};
+    const pending: Record<string, number> = {};
     orderItems.forEach((oi: any) => {
-      if (!verifiedThisMonth.has(oi.visit_id)) return;
+      const v = verifiedThisMonth.get(oi.visit_id);
+      if (!v) return;
       const uid = visitIdToUser[oi.visit_id];
       if (!uid) return;
-      totals[uid] = (totals[uid] || 0) + Number(oi.price_at_order) * Number(oi.quantity);
+      const status = (v as any).order_approval_status || 'pending';
+      if (status === 'rejected') return;
+      const amt = Number(oi.price_at_order) * Number(oi.quantity);
+      if (status === 'approved') approved[uid] = (approved[uid] || 0) + amt;
+      else pending[uid] = (pending[uid] || 0) + amt;
     });
-    return totals;
+    return { approved, pending };
   }, [orderItems, visits, monthStart, monthEnd, visitIdToUser]);
 
   // Scoped sales for the headline card
@@ -300,12 +308,67 @@ const Dashboard: React.FC = () => {
     return roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
   }, [selectedSP, role, user, myTeamMemberIds, adminTeamMemberIds, roles]);
 
-  const scopedSalesAchieved = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser[uid] || 0), 0);
-  const scopedTargetTotal = scopedUserIds.reduce((s, uid) => {
-    const t = targets.find(t => t.user_id === uid);
-    return s + (t ? Number(t.target_value) : 0);
-  }, 0);
-  const scopedTargetPct = scopedTargetTotal > 0 ? Math.round((scopedSalesAchieved / scopedTargetTotal) * 100) : 0;
+  const scopedSalesAchieved = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser.approved[uid] || 0), 0);
+  const scopedSalesPending = scopedUserIds.reduce((s, uid) => s + (monthSalesByUser.pending[uid] || 0), 0);
+
+  // ── Per-period target progress (monthly + weekly + daily can coexist) ──────
+  const todayStart = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  const tomorrowStart = useMemo(() => { const d = new Date(todayStart); d.setDate(d.getDate() + 1); return d; }, [todayStart]);
+  const weekStart = useMemo(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const offset = (day + 6) % 7;
+    d.setDate(d.getDate() - offset);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+  const weekEnd = useMemo(() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); return d; }, [weekStart]);
+
+  const salesInRange = (uid: string, from: Date, to: Date): number => {
+    let total = 0;
+    const verifiedInRange = new Map<string, any>();
+    visits
+      .filter(v => v.assigned_to === uid && v.visit_status === 'verified')
+      .filter(v => { const t = new Date(v.checked_in_at); return t >= from && t < to; })
+      .forEach(v => verifiedInRange.set(v.id, v));
+    orderItems.forEach((oi: any) => {
+      const v = verifiedInRange.get(oi.visit_id);
+      if (!v) return;
+      const status = (v as any).order_approval_status || 'pending';
+      if (status !== 'approved') return;
+      total += Number(oi.price_at_order) * Number(oi.quantity);
+    });
+    return total;
+  };
+
+  const todayISO = todayStart.toISOString().slice(0, 10);
+  const weekISO = weekStart.toISOString().slice(0, 10);
+
+  type PeriodCard = { period: 'daily' | 'weekly' | 'monthly'; label: string; achieved: number; total: number; pct: number };
+  const periodCards: PeriodCard[] = useMemo(() => {
+    const out: PeriodCard[] = [];
+    const build = (period: 'daily' | 'weekly' | 'monthly', label: string, from: Date, to: Date, periodStart: string | null) => {
+      const total = scopedUserIds.reduce((s, uid) => {
+        const t = targets.find(t =>
+          t.user_id === uid && t.period === period && (((t as any).period_start || null) === periodStart),
+        );
+        return s + (t ? Number(t.target_value) : 0);
+      }, 0);
+      if (total <= 0) return;
+      const achieved = scopedUserIds.reduce((s, uid) => s + salesInRange(uid, from, to), 0);
+      const pct = Math.round((achieved / total) * 100);
+      out.push({ period, label, achieved, total, pct });
+    };
+    build('monthly', 'This Month', monthStart, monthEnd, null);
+    build('weekly', 'This Week', weekStart, weekEnd, weekISO);
+    build('daily', 'Today', todayStart, tomorrowStart, todayISO);
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedUserIds, targets, visits, orderItems, monthStart, monthEnd, weekStart, weekEnd, todayStart, tomorrowStart]);
+
+  // Back-compat headline numbers (monthly view)
+  const scopedTargetTotal = periodCards.find(p => p.period === 'monthly')?.total || 0;
+  const scopedTargetPct = periodCards.find(p => p.period === 'monthly')?.pct || 0;
 
   // End-of-month non-achievers (only show late in month or after month end)
   const dayOfMonth = new Date().getDate();
@@ -318,7 +381,7 @@ const Dashboard: React.FC = () => {
     return spIds.map(uid => {
       const target = targets.find(t => t.user_id === uid);
       const targetVal = target ? Number(target.target_value) : 0;
-      const achieved = monthSalesByUser[uid] || 0;
+      const achieved = monthSalesByUser.approved[uid] || 0;
       const pct = targetVal > 0 ? Math.round((achieved / targetVal) * 100) : 0;
       const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
       const membership = teamMembers.find(tm => tm.user_id === uid);
@@ -387,25 +450,34 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      {/* Sales target progress card — monthly target, only shown for this month / all time views */}
-      {scopedTargetTotal > 0 && (period === 'this_month' || period === 'all_time') && (
-        <Card className="border-primary/20">
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <Target className="h-5 w-5 text-primary shrink-0" />
-                <p className="font-semibold text-sm truncate">Sales Target</p>
-              </div>
-              <p className="text-sm font-bold whitespace-nowrap">
-                ₹{Math.round(scopedSalesAchieved).toLocaleString()} <span className="text-muted-foreground font-medium">/ ₹{scopedTargetTotal.toLocaleString()}</span>
-              </p>
-            </div>
-            <Progress value={Math.min(100, scopedTargetPct)} className="h-2" />
-            <p className={`text-xs mt-2 font-medium ${scopedTargetPct >= 100 ? 'text-success' : 'text-muted-foreground'}`}>
-              {scopedTargetPct}% achieved {scopedTargetPct >= 100 ? '🎯' : ''} · This Month
-            </p>
-          </CardContent>
-        </Card>
+      {/* Sales target progress — one card per active period (monthly/weekly/daily) */}
+      {periodCards.length > 0 && (period === 'this_month' || period === 'this_week' || period === 'all_time') && (
+        <div className={`grid gap-3 ${periodCards.length > 1 ? 'sm:grid-cols-2 lg:grid-cols-3' : ''}`}>
+          {periodCards.map(pc => (
+            <Card key={pc.period} className="border-primary/20">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <Target className="h-5 w-5 text-primary shrink-0" />
+                    <p className="font-semibold text-sm truncate">{pc.label} Target</p>
+                  </div>
+                  <p className="text-sm font-bold whitespace-nowrap">
+                    ₹{Math.round(pc.achieved).toLocaleString()} <span className="text-muted-foreground font-medium">/ ₹{pc.total.toLocaleString()}</span>
+                  </p>
+                </div>
+                <Progress value={Math.min(100, pc.pct)} className="h-2" />
+                <p className={`text-xs mt-2 font-medium ${pc.pct >= 100 ? 'text-success' : 'text-muted-foreground'}`}>
+                  {pc.pct}% achieved {pc.pct >= 100 ? '🎯' : ''} · {pc.label}
+                </p>
+                {pc.period === 'monthly' && scopedSalesPending > 0 && (
+                  <p className="text-xs mt-1 text-warning">
+                    ₹{Math.round(scopedSalesPending).toLocaleString()} pending TL approval
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -595,7 +667,7 @@ const Dashboard: React.FC = () => {
               const spIds = (role === 'team_lead' ? myTeamMemberIds : roles.filter(r => r.role === 'salesperson').map(r => r.user_id));
               const ranked = spIds.map(uid => {
                 const uVisits = scopedVisits.filter(v => v.assigned_to === uid && v.visit_status === 'verified');
-                const orders = uVisits.filter(v => v.order_received).length;
+                const orders = uVisits.filter(v => v.order_received && (((v as any).order_approval_status || 'pending') === 'approved')).length;
                 const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
                 const target = targets.find(t => t.user_id === uid);
                 const achievedPct = target && Number(target.target_value) > 0

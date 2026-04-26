@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Receipt, Plus, AlertTriangle, CheckCircle2, Clock, XCircle, IndianRupee } from 'lucide-react';
 import { compressImage } from '@/lib/imageCompress';
 import CameraCapture from '@/components/CameraCapture';
+import SignedImage from '@/components/SignedImage';
 
 const CATEGORIES = ['Food', 'Travel', 'Accommodation', 'Communication', 'Office Supplies', 'Other'];
 const FOOD_LIMIT = 500;
@@ -35,6 +36,7 @@ const ExpensesPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [zoomReceipt, setZoomReceipt] = useState<string | null>(null);
 
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: ['expenses', user?.id],
@@ -259,7 +261,7 @@ const ExpensesPage: React.FC = () => {
             const approverName = getApproverName((e as any).approved_by);
             return (
               <Card key={e.id} className="field-card">
-                <CardContent className="p-4 flex items-center gap-4">
+                <CardContent className="p-4 flex items-start gap-3">
                   <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${e.approval_status === 'flagged' ? 'bg-warning/10' : e.approval_status === 'approved' ? 'bg-success/10' : 'bg-muted'}`}>
                     <StatusIcon className="h-5 w-5" />
                   </div>
@@ -282,11 +284,29 @@ const ExpensesPage: React.FC = () => {
                     {e.notes && <p className="text-xs text-muted-foreground mt-0.5">{e.notes}</p>}
                     {e.validation_result && <p className="text-xs text-warning mt-1">{e.validation_result}</p>}
                     <p className="text-xs text-muted-foreground">{new Date(e.created_at).toLocaleDateString()}</p>
+                    {canApprove && (e.approval_status === 'pending' || e.approval_status === 'flagged') && (
+                      <div className="flex gap-2 mt-2">
+                        <Button size="sm" variant="outline" className="text-success" onClick={() => updateStatus.mutate({ id: e.id, status: 'approved' })}>Approve</Button>
+                        <Button size="sm" variant="outline" className="text-destructive" onClick={() => updateStatus.mutate({ id: e.id, status: 'rejected' })}>Reject</Button>
+                      </div>
+                    )}
                   </div>
-                  {canApprove && (e.approval_status === 'pending' || e.approval_status === 'flagged') && (
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="text-success" onClick={() => updateStatus.mutate({ id: e.id, status: 'approved' })}>Approve</Button>
-                      <Button size="sm" variant="outline" className="text-destructive" onClick={() => updateStatus.mutate({ id: e.id, status: 'rejected' })}>Reject</Button>
+                  {e.receipt_photo_url ? (
+                    <button
+                      type="button"
+                      onClick={() => setZoomReceipt(e.receipt_photo_url)}
+                      className="shrink-0 rounded-lg overflow-hidden border border-border hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label="View receipt"
+                    >
+                      <SignedImage
+                        path={e.receipt_photo_url}
+                        alt="Receipt"
+                        className="h-16 w-16 object-cover"
+                      />
+                    </button>
+                  ) : (
+                    <div className="shrink-0 h-16 w-16 rounded-lg border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-1">
+                      No receipt
                     </div>
                   )}
                 </CardContent>
@@ -302,6 +322,19 @@ const ExpensesPage: React.FC = () => {
         onCapture={(file) => setReceipt(file)}
         title="Receipt Photo"
       />
+
+      <Dialog open={!!zoomReceipt} onOpenChange={(o) => !o && setZoomReceipt(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Receipt</DialogTitle></DialogHeader>
+          {zoomReceipt && (
+            <SignedImage
+              path={zoomReceipt}
+              alt="Receipt full view"
+              className="w-full h-auto max-h-[75vh] object-contain rounded-lg"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

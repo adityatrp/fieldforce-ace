@@ -370,6 +370,7 @@ export type Database = {
           created_at: string
           id: string
           period: string
+          period_start: string | null
           target_value: number
           updated_at: string
           user_id: string
@@ -379,6 +380,7 @@ export type Database = {
           created_at?: string
           id?: string
           period?: string
+          period_start?: string | null
           target_value?: number
           updated_at?: string
           user_id: string
@@ -388,6 +390,7 @@ export type Database = {
           created_at?: string
           id?: string
           period?: string
+          period_start?: string | null
           target_value?: number
           updated_at?: string
           user_id?: string
@@ -543,6 +546,9 @@ export type Database = {
           location_name: string | null
           longitude: number | null
           notes: string | null
+          order_approval_status: string
+          order_approved_at: string | null
+          order_approved_by: string | null
           order_notes: string | null
           order_received: boolean | null
           photo_url: string | null
@@ -568,6 +574,9 @@ export type Database = {
           location_name?: string | null
           longitude?: number | null
           notes?: string | null
+          order_approval_status?: string
+          order_approved_at?: string | null
+          order_approved_by?: string | null
           order_notes?: string | null
           order_received?: boolean | null
           photo_url?: string | null
@@ -593,6 +602,9 @@ export type Database = {
           location_name?: string | null
           longitude?: number | null
           notes?: string | null
+          order_approval_status?: string
+          order_approved_at?: string | null
+          order_approved_by?: string | null
           order_notes?: string | null
           order_received?: boolean | null
           photo_url?: string | null

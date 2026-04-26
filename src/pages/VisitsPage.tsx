@@ -651,11 +651,19 @@ const VisitsPage: React.FC = () => {
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-semibold text-sm">{v.customer_name}</p>
                 <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${config.color}`}>{config.label}</Badge>
-                {v.order_received && (
-                  <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-[10px] px-1.5 py-0">
-                    <Package className="h-3 w-3 mr-0.5" /> Order
-                  </Badge>
-                )}
+                {v.order_received && (() => {
+                  const s = (v as any).order_approval_status || 'pending';
+                  const cls = s === 'approved'
+                    ? 'bg-success/10 text-success border-success/20'
+                    : s === 'rejected'
+                      ? 'bg-destructive/10 text-destructive border-destructive/20'
+                      : 'bg-warning/10 text-warning border-warning/30';
+                  return (
+                    <Badge variant="outline" className={`${cls} text-[10px] px-1.5 py-0`}>
+                      <Package className="h-3 w-3 mr-0.5" /> Order · {s}
+                    </Badge>
+                  );
+                })()}
                 {isOverdueToday && (
                   <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] px-1.5 py-0">
                     {isPastDue ? '⚠ Past due' : '⏰ Due today'}

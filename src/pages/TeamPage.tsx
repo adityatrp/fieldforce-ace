@@ -74,6 +74,7 @@ const TeamPage: React.FC = () => {
   // Target setting
   const [targetOpen, setTargetOpen] = useState(false);
   const [teamTargetValue, setTeamTargetValue] = useState('');
+  const [teamTargetPeriod, setTeamTargetPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
 
   // Search filters
   const [spSearch, setSpSearch] = useState('');
@@ -351,6 +352,23 @@ const TeamPage: React.FC = () => {
     onError: (err: Error) => toast({ title: 'Failed to add product', description: err.message, variant: 'destructive' }),
   });
 
+  // Period start helper: monthly => null (a single ongoing target),
+  // weekly => current Monday (ISO YYYY-MM-DD), daily => today.
+  const computePeriodStart = (period: 'daily' | 'weekly' | 'monthly'): string | null => {
+    const d = new Date();
+    if (period === 'monthly') return null;
+    if (period === 'daily') {
+      d.setHours(0, 0, 0, 0);
+      return d.toISOString().slice(0, 10);
+    }
+    // Weekly — back up to Monday
+    const day = d.getDay(); // 0 (Sun) .. 6 (Sat)
+    const offset = (day + 6) % 7; // distance back to Monday
+    d.setDate(d.getDate() - offset);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
+  };
+
   const setTeamTargetMutation = useMutation({
     mutationFn: async () => {
       const targetVal = parseFloat(teamTargetValue);
@@ -359,18 +377,31 @@ const TeamPage: React.FC = () => {
       const spIds = role === 'team_lead' ? salespersons.map(s => s.user_id) : [];
       if (spIds.length === 0) throw new Error('No salespersons found in your team.');
 
+      const periodStart = computePeriodStart(teamTargetPeriod);
+
       for (const uid of spIds) {
-        const existing = targets.find(t => t.user_id === uid);
+        const existing = targets.find(t =>
+          t.user_id === uid &&
+          t.period === teamTargetPeriod &&
+          (((t as any).period_start || null) === periodStart),
+        );
         if (existing) {
           await supabase.from('targets').update({ target_value: targetVal }).eq('id', existing.id);
         } else {
-          await supabase.from('targets').insert({ user_id: uid, target_value: targetVal, achieved_value: 0 });
+          await supabase.from('targets').insert({
+            user_id: uid,
+            target_value: targetVal,
+            achieved_value: 0,
+            period: teamTargetPeriod,
+            period_start: periodStart,
+          } as any);
         }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team-targets'] });
-      toast({ title: 'Target set for all team members successfully' });
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      toast({ title: `${teamTargetPeriod[0].toUpperCase() + teamTargetPeriod.slice(1)} target set for team` });
       setTargetOpen(false); setTeamTargetValue('');
     },
     onError: (err: Error) => toast({ title: 'Failed to set targets', description: err.message, variant: 'destructive' }),
@@ -430,6 +461,23 @@ const TeamPage: React.FC = () => {
       setPromoteOpen(false); setPromoteUserId(''); setPromoteTeamId('');
     },
     onError: (err: Error) => toast({ title: 'Failed to promote user', description: err.message, variant: 'destructive' }),
+  });
+
+  const orderApprovalMutation = useMutation({
+    mutationFn: async ({ visitId, status }: { visitId: string; status: 'approved' | 'rejected' }) => {
+      const { error } = await supabase.from('visits').update({
+        order_approval_status: status,
+        order_approved_by: user!.id,
+        order_approved_at: new Date().toISOString(),
+      }).eq('id', visitId);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['team-visits'] });
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
+      toast({ title: vars.status === 'approved' ? 'Order approved' : 'Order rejected' });
+    },
+    onError: (err: Error) => toast({ title: 'Could not update order', description: err.message, variant: 'destructive' }),
   });
 
   const openEditDialog = (visit: typeof visits[0]) => {
@@ -706,20 +754,39 @@ const TeamPage: React.FC = () => {
       {/* Set Target Dialog */}
       <Dialog open={targetOpen} onOpenChange={setTargetOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Set Monthly Target for Team</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Set Sales Target for Team</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-2">
             <p className="text-sm text-muted-foreground">
-              This will set the same monthly target for all {salespersons.length} salesperson(s) in your team.
+              Choose a period and amount. The same target is applied to all {salespersons.length} salesperson(s) in your team.
             </p>
+            <div className="space-y-2">
+              <Label>Period</Label>
+              <Select value={teamTargetPeriod} onValueChange={(v: any) => setTeamTargetPeriod(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily (today)</SelectItem>
+                  <SelectItem value="weekly">Weekly (this week, Mon–Sun)</SelectItem>
+                  <SelectItem value="monthly">Monthly (ongoing)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Daily / weekly targets are scoped to the current window — set a fresh one each period.
+              </p>
+            </div>
             {salespersons.length > 0 && (
-              <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1">
+              <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1 max-h-40 overflow-y-auto">
                 <p className="font-medium">Current team members:</p>
                 {salespersons.map(sp => {
-                  const existing = targets.find(t => t.user_id === sp.user_id);
+                  const ps = computePeriodStart(teamTargetPeriod);
+                  const existing = targets.find(t =>
+                    t.user_id === sp.user_id &&
+                    t.period === teamTargetPeriod &&
+                    (((t as any).period_start || null) === ps),
+                  );
                   return (
                     <div key={sp.user_id} className="flex justify-between">
-                      <span>{sp.full_name || sp.email}</span>
-                      <span className="text-muted-foreground">
+                      <span className="truncate">{sp.full_name || sp.email}</span>
+                      <span className="text-muted-foreground shrink-0 ml-2">
                         {existing ? `Current: ₹${Number(existing.target_value).toLocaleString()}` : 'No target'}
                       </span>
                     </div>
@@ -728,7 +795,7 @@ const TeamPage: React.FC = () => {
               </div>
             )}
             <div className="space-y-2">
-              <Label>Monthly Target Amount (₹)</Label>
+              <Label>{teamTargetPeriod[0].toUpperCase() + teamTargetPeriod.slice(1)} Target Amount (₹)</Label>
               <Input
                 type="number"
                 value={teamTargetValue}
@@ -742,7 +809,7 @@ const TeamPage: React.FC = () => {
               disabled={!teamTargetValue || setTeamTargetMutation.isPending}
               onClick={() => setTeamTargetMutation.mutate()}
             >
-              {setTeamTargetMutation.isPending ? 'Setting targets...' : `Set Target for ${salespersons.length} Members`}
+              {setTeamTargetMutation.isPending ? 'Setting targets...' : `Set ${teamTargetPeriod} target for ${salespersons.length} members`}
             </Button>
           </div>
         </DialogContent>
@@ -839,7 +906,21 @@ const TeamPage: React.FC = () => {
               )}
               {viewVisit.order_received && (
                 <div>
-                  <p className="text-sm font-medium text-success mb-2">📦 Order Received</p>
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                    <p className="text-sm font-medium text-success">📦 Order Received</p>
+                    <Badge
+                      variant="outline"
+                      className={
+                        (viewVisit as any).order_approval_status === 'approved'
+                          ? 'bg-success/10 text-success border-success/20'
+                          : (viewVisit as any).order_approval_status === 'rejected'
+                            ? 'bg-destructive/10 text-destructive border-destructive/20'
+                            : 'bg-warning/10 text-warning border-warning/20'
+                      }
+                    >
+                      {(viewVisit as any).order_approval_status || 'pending'}
+                    </Badge>
+                  </div>
                   {visitOrderItems.length > 0 && (
                     <div className="space-y-1">
                       {visitOrderItems.map((item: any) => (
@@ -855,6 +936,27 @@ const TeamPage: React.FC = () => {
                     </div>
                   )}
                   {viewVisit.order_notes && <p className="text-xs text-muted-foreground mt-2">{viewVisit.order_notes}</p>}
+                  {(role === 'team_lead' || role === 'admin') && (viewVisit as any).order_approval_status === 'pending' && (
+                    <div className="flex gap-2 mt-3">
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        disabled={orderApprovalMutation.isPending}
+                        onClick={() => orderApprovalMutation.mutate({ visitId: viewVisit.id, status: 'approved' })}
+                      >
+                        Approve Order
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-destructive"
+                        disabled={orderApprovalMutation.isPending}
+                        onClick={() => orderApprovalMutation.mutate({ visitId: viewVisit.id, status: 'rejected' })}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1030,7 +1132,23 @@ const TeamPage: React.FC = () => {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-sm">{v.customer_name}</p>
                         <Badge variant="outline" className={statusColor[v.visit_status] || 'bg-muted'}>{v.visit_status}</Badge>
-                        {v.order_received && <Badge variant="outline" className="bg-success/10 text-success">Order ✓</Badge>}
+                        {v.order_received && (() => {
+                          const s = (v as any).order_approval_status || 'pending';
+                          return (
+                            <Badge
+                              variant="outline"
+                              className={
+                                s === 'approved'
+                                  ? 'bg-success/10 text-success border-success/20'
+                                  : s === 'rejected'
+                                    ? 'bg-destructive/10 text-destructive border-destructive/20'
+                                    : 'bg-warning/10 text-warning border-warning/20'
+                              }
+                            >
+                              Order · {s}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                       {v.location_name && <p className="text-xs text-muted-foreground">📍 {v.location_name}</p>}
                       <p className="text-xs text-muted-foreground">
