@@ -413,6 +413,11 @@ const Dashboard: React.FC = () => {
             <p className={`text-xs mt-2 font-medium ${scopedTargetPct >= 100 ? 'text-success' : 'text-muted-foreground'}`}>
               {scopedTargetPct}% achieved {scopedTargetPct >= 100 ? '🎯' : ''} · This Month
             </p>
+            {scopedSalesPending > 0 && (
+              <p className="text-xs mt-1 text-warning">
+                ₹{Math.round(scopedSalesPending).toLocaleString()} pending TL approval
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
