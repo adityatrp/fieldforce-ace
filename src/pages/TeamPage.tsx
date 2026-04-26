@@ -856,7 +856,21 @@ const TeamPage: React.FC = () => {
               )}
               {viewVisit.order_received && (
                 <div>
-                  <p className="text-sm font-medium text-success mb-2">📦 Order Received</p>
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                    <p className="text-sm font-medium text-success">📦 Order Received</p>
+                    <Badge
+                      variant="outline"
+                      className={
+                        (viewVisit as any).order_approval_status === 'approved'
+                          ? 'bg-success/10 text-success border-success/20'
+                          : (viewVisit as any).order_approval_status === 'rejected'
+                            ? 'bg-destructive/10 text-destructive border-destructive/20'
+                            : 'bg-warning/10 text-warning border-warning/20'
+                      }
+                    >
+                      {(viewVisit as any).order_approval_status || 'pending'}
+                    </Badge>
+                  </div>
                   {visitOrderItems.length > 0 && (
                     <div className="space-y-1">
                       {visitOrderItems.map((item: any) => (
@@ -872,6 +886,27 @@ const TeamPage: React.FC = () => {
                     </div>
                   )}
                   {viewVisit.order_notes && <p className="text-xs text-muted-foreground mt-2">{viewVisit.order_notes}</p>}
+                  {(role === 'team_lead' || role === 'admin') && (viewVisit as any).order_approval_status === 'pending' && (
+                    <div className="flex gap-2 mt-3">
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        disabled={orderApprovalMutation.isPending}
+                        onClick={() => orderApprovalMutation.mutate({ visitId: viewVisit.id, status: 'approved' })}
+                      >
+                        Approve Order
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-destructive"
+                        disabled={orderApprovalMutation.isPending}
+                        onClick={() => orderApprovalMutation.mutate({ visitId: viewVisit.id, status: 'rejected' })}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
