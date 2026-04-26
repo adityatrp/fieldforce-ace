@@ -182,7 +182,10 @@ const Dashboard: React.FC = () => {
   const verifiedVisits = scopedVisits.filter(v => v.visit_status === 'verified');
   const failedVisits = scopedVisits.filter(v => v.visit_status === 'failed');
   const pendingVisits = scopedVisits.filter(v => v.visit_status === 'assigned');
-  const ordersReceived = verifiedVisits.filter(v => v.order_received).length;
+  const approvedOrderVisits = verifiedVisits.filter(v => v.order_received && ((v as any).order_approval_status || 'pending') === 'approved');
+  const pendingOrderVisits = verifiedVisits.filter(v => v.order_received && ((v as any).order_approval_status || 'pending') === 'pending');
+  const ordersReceived = approvedOrderVisits.length;
+  const ordersPending = pendingOrderVisits.length;
   const totalExpenses = scopedExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
   const approvedExpenses = scopedExpenses.filter(e => e.approval_status === 'approved').reduce((s, e) => s + Number(e.amount), 0);
   const pendingExpenses = scopedExpenses.filter(e => e.approval_status === 'pending' || e.approval_status === 'flagged').reduce((s, e) => s + Number(e.amount), 0);
