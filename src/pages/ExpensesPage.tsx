@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Receipt, Plus, AlertTriangle, CheckCircle2, Clock, XCircle, IndianRupee } from 'lucide-react';
 import { compressImage } from '@/lib/imageCompress';
 import CameraCapture from '@/components/CameraCapture';
+import SignedImage from '@/components/SignedImage';
 
 const CATEGORIES = ['Food', 'Travel', 'Accommodation', 'Communication', 'Office Supplies', 'Other'];
 const FOOD_LIMIT = 500;
@@ -35,6 +36,7 @@ const ExpensesPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [zoomReceipt, setZoomReceipt] = useState<string | null>(null);
 
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: ['expenses', user?.id],
