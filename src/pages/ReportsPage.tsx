@@ -96,19 +96,20 @@ const ReportsPage: React.FC = () => {
   const salespersonIds = roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
 
   const downloadSalespersonPerformance = () => {
-    const headers = ['Salesperson', 'Team', 'Total Visits', 'Verified', 'Failed', 'Orders Received', 'Work Hours', 'Target Achievement %'];
+    const headers = ['Salesperson', 'Team', 'Total Visits', 'Verified', 'Failed', 'Orders Approved', 'Orders Pending', 'Work Hours', 'Target Achievement %'];
     const rows = salespersonIds.map(uid => {
       const uVisits = visits.filter(v => v.assigned_to === uid);
       const verified = uVisits.filter(v => v.visit_status === 'verified');
       const failed = uVisits.filter(v => v.visit_status === 'failed');
-      const orders = verified.filter(v => v.order_received).length;
+      const ordersApproved = verified.filter(v => v.order_received && (((v as any).order_approval_status || 'pending') === 'approved')).length;
+      const ordersPending = verified.filter(v => v.order_received && (((v as any).order_approval_status || 'pending') === 'pending')).length;
       const workedMs = verified.reduce((sum, v) => {
         if (v.checked_out_at) return sum + (new Date(v.checked_out_at).getTime() - new Date(v.checked_in_at).getTime());
         return sum;
       }, 0);
       const target = targets.find(t => t.user_id === uid);
       const pct = target ? Math.round((Number(target.achieved_value) / Number(target.target_value)) * 100) : 0;
-      return [getName(uid), getTeam(uid), uVisits.length.toString(), verified.length.toString(), failed.length.toString(), orders.toString(), (Math.round(workedMs / 3600000 * 10) / 10).toString(), pct.toString()];
+      return [getName(uid), getTeam(uid), uVisits.length.toString(), verified.length.toString(), failed.length.toString(), ordersApproved.toString(), ordersPending.toString(), (Math.round(workedMs / 3600000 * 10) / 10).toString(), pct.toString()];
     });
     downloadCSV(`salesperson_performance_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
     toast({ title: 'Report downloaded' });
