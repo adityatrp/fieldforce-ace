@@ -352,6 +352,23 @@ const TeamPage: React.FC = () => {
     onError: (err: Error) => toast({ title: 'Failed to add product', description: err.message, variant: 'destructive' }),
   });
 
+  // Period start helper: monthly => null (a single ongoing target),
+  // weekly => current Monday (ISO YYYY-MM-DD), daily => today.
+  const computePeriodStart = (period: 'daily' | 'weekly' | 'monthly'): string | null => {
+    const d = new Date();
+    if (period === 'monthly') return null;
+    if (period === 'daily') {
+      d.setHours(0, 0, 0, 0);
+      return d.toISOString().slice(0, 10);
+    }
+    // Weekly — back up to Monday
+    const day = d.getDay(); // 0 (Sun) .. 6 (Sat)
+    const offset = (day + 6) % 7; // distance back to Monday
+    d.setDate(d.getDate() - offset);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
+  };
+
   const setTeamTargetMutation = useMutation({
     mutationFn: async () => {
       const targetVal = parseFloat(teamTargetValue);
@@ -360,18 +377,31 @@ const TeamPage: React.FC = () => {
       const spIds = role === 'team_lead' ? salespersons.map(s => s.user_id) : [];
       if (spIds.length === 0) throw new Error('No salespersons found in your team.');
 
+      const periodStart = computePeriodStart(teamTargetPeriod);
+
       for (const uid of spIds) {
-        const existing = targets.find(t => t.user_id === uid);
+        const existing = targets.find(t =>
+          t.user_id === uid &&
+          t.period === teamTargetPeriod &&
+          (((t as any).period_start || null) === periodStart),
+        );
         if (existing) {
           await supabase.from('targets').update({ target_value: targetVal }).eq('id', existing.id);
         } else {
-          await supabase.from('targets').insert({ user_id: uid, target_value: targetVal, achieved_value: 0 });
+          await supabase.from('targets').insert({
+            user_id: uid,
+            target_value: targetVal,
+            achieved_value: 0,
+            period: teamTargetPeriod,
+            period_start: periodStart,
+          } as any);
         }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team-targets'] });
-      toast({ title: 'Target set for all team members successfully' });
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      toast({ title: `${teamTargetPeriod[0].toUpperCase() + teamTargetPeriod.slice(1)} target set for team` });
       setTargetOpen(false); setTeamTargetValue('');
     },
     onError: (err: Error) => toast({ title: 'Failed to set targets', description: err.message, variant: 'destructive' }),
