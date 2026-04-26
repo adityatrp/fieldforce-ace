@@ -132,7 +132,7 @@ const ReportsPage: React.FC = () => {
   };
 
   const downloadVisitsDetail = () => {
-    const headers = ['Date', 'Customer', 'Location', 'Assigned To', 'Team', 'Status', 'Order Received', 'Check-in Time', 'Check-out Time', 'Notes'];
+    const headers = ['Date', 'Customer', 'Location', 'Assigned To', 'Team', 'Status', 'Order Received', 'Order Approval', 'Check-in Time', 'Check-out Time', 'Notes'];
     const rows = visits.map(v => [
       new Date(v.created_at).toLocaleDateString(),
       v.customer_name,
@@ -141,6 +141,7 @@ const ReportsPage: React.FC = () => {
       getTeam(v.assigned_to || ''),
       v.visit_status,
       v.order_received ? 'Yes' : 'No',
+      v.order_received ? ((v as any).order_approval_status || 'pending') : '',
       v.visit_status !== 'assigned' ? new Date(v.checked_in_at).toLocaleString() : '',
       v.checked_out_at ? new Date(v.checked_out_at).toLocaleString() : '',
       v.notes || '',
