@@ -322,6 +322,19 @@ const ExpensesPage: React.FC = () => {
         onCapture={(file) => setReceipt(file)}
         title="Receipt Photo"
       />
+
+      <Dialog open={!!zoomReceipt} onOpenChange={(o) => !o && setZoomReceipt(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Receipt</DialogTitle></DialogHeader>
+          {zoomReceipt && (
+            <SignedImage
+              path={zoomReceipt}
+              alt="Receipt full view"
+              className="w-full h-auto max-h-[75vh] object-contain rounded-lg"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
