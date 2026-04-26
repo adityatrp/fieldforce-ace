@@ -74,6 +74,7 @@ const TeamPage: React.FC = () => {
   // Target setting
   const [targetOpen, setTargetOpen] = useState(false);
   const [teamTargetValue, setTeamTargetValue] = useState('');
+  const [teamTargetPeriod, setTeamTargetPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
 
   // Search filters
   const [spSearch, setSpSearch] = useState('');
