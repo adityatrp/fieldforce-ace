@@ -69,55 +69,87 @@ const TrackingPage: React.FC = () => {
     staleTime: 60_000,
   });
 
+  // Stable list of user IDs we're allowed to see — drives query scoping + realtime filters.
+  const visibleUserIds = useMemo(
+    () => profiles.map(p => p.user_id).filter(Boolean),
+    [profiles],
+  );
+  const visibleIdsKey = useMemo(() => visibleUserIds.slice().sort().join(','), [visibleUserIds]);
+
   const { data: logs = [], refetch: refetchLogs, isFetching: fetchingLogs } = useQuery({
-    queryKey: ['tracking-today-logs', startISO],
+    queryKey: ['tracking-today-logs', startISO, visibleIdsKey],
     queryFn: async () => {
+      if (visibleUserIds.length === 0) return [];
+      // Slim payload — accuracy/created_at/visit_id not needed for the list view.
       const { data } = await supabase
         .from('location_logs')
         .select('user_id, latitude, longitude, logged_at, battery_percent, battery_charging')
+        .in('user_id', visibleUserIds)
         .gte('logged_at', startISO)
         .lt('logged_at', endISO)
         .order('logged_at', { ascending: true });
       return data || [];
     },
-    enabled: !!user && (role === 'admin' || role === 'team_lead'),
+    enabled: !!user && (role === 'admin' || role === 'team_lead') && visibleUserIds.length > 0,
     refetchOnWindowFocus: true,
-    refetchInterval: 30_000, // poll every 30s as a safety net
+    refetchInterval: 60_000, // safety net poll — realtime handles fresh data
   });
 
   const { data: punches = [], refetch: refetchPunches } = useQuery({
-    queryKey: ['tracking-today-punches', startISO],
+    queryKey: ['tracking-today-punches', startISO, visibleIdsKey],
     queryFn: async () => {
+      if (visibleUserIds.length === 0) return [];
       const { data } = await supabase
         .from('attendance_punches')
         .select('user_id, punched_in_at, punched_out_at, battery_percent_in')
+        .in('user_id', visibleUserIds)
         .gte('punched_in_at', startISO)
         .lt('punched_in_at', endISO);
       return data || [];
     },
-    enabled: !!user && (role === 'admin' || role === 'team_lead'),
+    enabled: !!user && (role === 'admin' || role === 'team_lead') && visibleUserIds.length > 0,
     refetchOnWindowFocus: true,
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
-  // Realtime: invalidate the queries whenever a new ping or punch arrives
+  // Realtime: scoped per-user filter + debounced invalidation to avoid refetch storms at 100+ users.
+  const debounceRef = useRef<{ logs?: ReturnType<typeof setTimeout>; punches?: ReturnType<typeof setTimeout> }>({});
   useEffect(() => {
     if (!user || (role !== 'admin' && role !== 'team_lead')) return;
+    if (visibleUserIds.length === 0) return;
 
-    const channel = supabase
-      .channel('tracking-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'location_logs' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['tracking-today-logs'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_punches' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['tracking-today-punches'] });
-      })
-      .subscribe();
+    const scheduleInvalidate = (kind: 'logs' | 'punches') => {
+      if (debounceRef.current[kind]) clearTimeout(debounceRef.current[kind]);
+      debounceRef.current[kind] = setTimeout(() => {
+        queryClient.invalidateQueries({
+          queryKey: kind === 'logs' ? ['tracking-today-logs'] : ['tracking-today-punches'],
+        });
+      }, 5_000);
+    };
+
+    const channel = supabase.channel(`tracking-live-${user.id}`);
+
+    // Postgres `=in.(...)` filter is supported by Realtime as `user_id=in.(uuid,uuid,...)`.
+    // For admins watching the whole org we skip the filter (would exceed payload size); for leads we scope tight.
+    if (role === 'team_lead' && visibleUserIds.length <= 100) {
+      const filter = `user_id=in.(${visibleUserIds.join(',')})`;
+      channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'location_logs', filter }, () => scheduleInvalidate('logs'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_punches', filter }, () => scheduleInvalidate('punches'));
+    } else {
+      channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'location_logs' }, () => scheduleInvalidate('logs'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_punches' }, () => scheduleInvalidate('punches'));
+    }
+
+    channel.subscribe();
 
     return () => {
+      if (debounceRef.current.logs) clearTimeout(debounceRef.current.logs);
+      if (debounceRef.current.punches) clearTimeout(debounceRef.current.punches);
       supabase.removeChannel(channel);
     };
-  }, [user, role, queryClient]);
+  }, [user, role, queryClient, visibleIdsKey, visibleUserIds]);
 
   const rows = useMemo(() => {
     const byUser = new Map<string, typeof logs>();
