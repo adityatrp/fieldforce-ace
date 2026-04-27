@@ -163,6 +163,25 @@ const TeamPage: React.FC = () => {
     enabled: !!viewDialog,
   });
 
+  // Lightweight fetch of order item totals for the Approvals queue (pending only)
+  const { data: pendingOrderTotals = {} } = useQuery({
+    queryKey: ['pending-order-totals'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('visit_order_items')
+        .select('visit_id, quantity, price_at_order');
+      const map: Record<string, { total: number; itemCount: number }> = {};
+      for (const r of data || []) {
+        const v = map[r.visit_id] || { total: 0, itemCount: 0 };
+        v.total += Number(r.price_at_order) * Number(r.quantity);
+        v.itemCount += 1;
+        map[r.visit_id] = v;
+      }
+      return map;
+    },
+    enabled: !!user && (role === 'team_lead' || role === 'admin'),
+  });
+
   // Team lead's team
   const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
   const myTeamId = myTeamMembership?.team_id;
