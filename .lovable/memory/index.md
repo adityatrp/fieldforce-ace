@@ -22,7 +22,8 @@ Updated: just now
 - [Reporting Suite](mem://features/reporting-suite) — Admin CSV exports for metrics, team summaries, and expenses
 - [Route Optimization](mem://features/route-optimization) — 'Start Your Day' greedy nearest-neighbor sorting and re-optimization
 - [Target Management](mem://features/target-management) — Monthly + weekly + daily targets, multi-period support, Dashboard cards per period
-- [Order Approval](mem://features/order-approval) — TL/Admin approve visit orders; Dashboard splits approved vs pending sales
+- [Order Approval](mem://features/order-approval) — TL/Admin approve visit orders via Team page Approvals tab; Dashboard splits approved vs pending sales
+- [Tracking Performance](mem://architecture/tracking-performance) — Scoped queries, filtered realtime, debounced invalidations on /tracking
 - [Visit Assignment](mem://features/visit-assignment) — Assignment dictionary search, reassignment, and geocoding
 - [Visit Check-in Logic](mem://features/visit-check-in) — No accuracy gate, refreshable GPS, location_logs on every check-in
 - [Attendance & Tracking](mem://features/attendance-tracking) — Daily punch in/out, location_logs, /tracking page for Admin & Lead
