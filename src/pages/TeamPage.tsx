@@ -209,6 +209,14 @@ const TeamPage: React.FC = () => {
     return visits;
   }, [visits, role, myTeamMemberIds]);
 
+  // Orders awaiting TL/Admin approval (newest first)
+  const pendingApprovalVisits = useMemo(() => {
+    return visibleVisits
+      .filter(v => v.order_received && ((v as any).order_approval_status || 'pending') === 'pending')
+      .sort((a, b) => new Date(b.checked_out_at || b.checked_in_at || b.created_at).getTime() -
+                       new Date(a.checked_out_at || a.checked_in_at || a.created_at).getTime());
+  }, [visibleVisits]);
+
   const geocodeAddress = async () => {
     if (!address.trim()) {
       toast({ title: 'Please enter an address', description: 'Type a business name, landmark, or address to auto-detect coordinates.', variant: 'destructive' });
