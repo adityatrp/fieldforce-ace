@@ -502,6 +502,7 @@ const TeamPage: React.FC = () => {
     onSuccess: (_d, vars) => {
       queryClient.invalidateQueries({ queryKey: ['team-visits'] });
       queryClient.invalidateQueries({ queryKey: ['visits'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-order-totals'] });
       toast({ title: vars.status === 'approved' ? 'Order approved' : 'Order rejected' });
     },
     onError: (err: Error) => toast({ title: 'Could not update order', description: err.message, variant: 'destructive' }),
