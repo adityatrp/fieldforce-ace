@@ -29,7 +29,7 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const GPS_THRESHOLD_METERS = 40; // verification radius around target
+const GPS_THRESHOLD_METERS = 100; // verification radius around target
 const GPS_TARGET_ACCURACY = 10; // best-effort target; not enforced
 const GPS_HARD_TIMEOUT_MS = 15000; // give the GPS chip up to 15s to converge
 
