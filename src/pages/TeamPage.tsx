@@ -1389,39 +1389,21 @@ const TeamPage: React.FC = () => {
                       const targetTeamId = role === 'admin' ? newUserTeamId : myTeamId;
                       if (!targetTeamId) throw new Error('A team is required to create a salesperson.');
 
-                      // Preserve current admin/lead session — sign-up auto-logs-in the new user.
-                      const { data: sessionData } = await supabase.auth.getSession();
-                      const currentSession = sessionData.session;
-
-                      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-                        email: newUserEmail,
-                        password: newUserPassword,
-                        options: { data: { full_name: newUserName } },
-                      });
-                      if (signUpError) throw signUpError;
-
-                      const newUserId = signUpData.user?.id;
-
-                      if (currentSession) {
-                        await supabase.auth.setSession({
-                          access_token: currentSession.access_token,
-                          refresh_token: currentSession.refresh_token,
-                        });
-                      }
-
-                      if (newUserId) {
-                        const { error: tmError } = await supabase.from('team_members').insert({
+                      // Server-side creation via edge function — caller's session is never touched.
+                      const { data, error } = await supabase.functions.invoke('admin-create-salesperson', {
+                        body: {
+                          email: newUserEmail,
+                          password: newUserPassword,
+                          full_name: newUserName,
                           team_id: targetTeamId,
-                          user_id: newUserId,
-                        });
-                        if (tmError && !tmError.message.toLowerCase().includes('duplicate')) {
-                          throw new Error(`User created, but team assignment failed: ${tmError.message}`);
-                        }
-                      }
+                        },
+                      });
+                      if (error) throw error;
+                      if (data?.error) throw new Error(data.error);
 
                       toast({
                         title: 'Salesperson created successfully',
-                        description: `${newUserName} has been added to ${role === 'admin' ? teams.find(t => t.id === newUserTeamId)?.name : getTeamNameById(myTeamId!)}. They can log in after email verification.`,
+                        description: `${newUserName} has been added to ${role === 'admin' ? teams.find(t => t.id === newUserTeamId)?.name : getTeamNameById(myTeamId!)}. They can sign in immediately with the password you set.`,
                       });
                       setCreateUserOpen(false);
                       setNewUserEmail(''); setNewUserPassword(''); setNewUserName(''); setNewUserTeamId('');
