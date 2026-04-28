@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileText, Users, MapPin, Receipt, Target } from 'lucide-react';
+import { Download, FileText, Users, MapPin, Receipt, Target, ShoppingCart, Wallet, Activity } from 'lucide-react';
 
 function downloadCSV(filename: string, headers: string[], rows: string[][]) {
   const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(','))].join('\n');
