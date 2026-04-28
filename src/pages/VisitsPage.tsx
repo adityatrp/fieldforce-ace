@@ -705,6 +705,28 @@ const VisitsPage: React.FC = () => {
                 </Button>
               )}
               {v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming && (
+                <Button
+                  size="sm"
+                  className="h-9 native-btn rounded-xl text-xs"
+                  onClick={() => {
+                    if (!dayStarted) {
+                      toast({
+                        title: 'Punch in first',
+                        description: 'You must punch in for the day before checking into a visit.',
+                        variant: 'destructive',
+                      });
+                      return;
+                    }
+                    setCheckInDialog(v.id);
+                  }}
+                  disabled={!dayStarted}
+                  title={!dayStarted ? 'Punch in to start your day before checking in' : undefined}
+                >
+                  <Navigation className="h-3.5 w-3.5 mr-1" />
+                  Check In
+                </Button>
+              )}
+              {v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming && (
                 <Button size="sm" className="h-9 native-btn rounded-xl text-xs" onClick={() => setCheckInDialog(v.id)}>
                   <Navigation className="h-3.5 w-3.5 mr-1" />
                   Check In
