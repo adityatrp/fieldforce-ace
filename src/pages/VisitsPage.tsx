@@ -179,7 +179,7 @@ const VisitsPage: React.FC = () => {
       const { data } = await supabase.from('products').select('*').eq('active', true);
       return data || [];
     },
-    enabled: !!user && role === 'salesperson',
+    enabled: !!user && (role === 'salesperson' || role === 'team_lead'),
   });
 
   const { data: visitOrderItems = [] } = useQuery({
