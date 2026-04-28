@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileText, Users, MapPin, Receipt, Target } from 'lucide-react';
+import { Download, FileText, Users, MapPin, Receipt, Target, ShoppingCart, Wallet, Activity } from 'lucide-react';
 
 function downloadCSV(filename: string, headers: string[], rows: string[][]) {
   const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -81,6 +81,33 @@ const ReportsPage: React.FC = () => {
     queryKey: ['report-teams'],
     queryFn: async () => {
       const { data } = await supabase.from('teams').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: orderItems = [] } = useQuery({
+    queryKey: ['report-order-items'],
+    queryFn: async () => {
+      const { data } = await supabase.from('visit_order_items').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: products = [] } = useQuery({
+    queryKey: ['report-products'],
+    queryFn: async () => {
+      const { data } = await supabase.from('products').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: dailySummaries = [] } = useQuery({
+    queryKey: ['report-daily-summaries'],
+    queryFn: async () => {
+      const { data } = await supabase.from('attendance_daily_summary').select('*').order('work_date', { ascending: false });
       return data || [];
     },
     enabled: !!user,
@@ -182,9 +209,73 @@ const ReportsPage: React.FC = () => {
     toast({ title: 'Report downloaded' });
   };
 
+  const downloadSalesOrdersReport = () => {
+    const headers = ['Visit Date', 'Team', 'Salesperson', 'Customer', 'Product', 'SKU', 'Quantity', 'Unit Price (₹)', 'Line Total (₹)', 'Order Status', 'Visit Status'];
+    const rows: string[][] = [];
+    orderItems.forEach(oi => {
+      const v = visits.find(vv => vv.id === oi.visit_id);
+      if (!v) return;
+      const p = products.find(pp => pp.id === oi.product_id);
+      const qty = Number(oi.quantity) || 0;
+      const price = Number(oi.price_at_order) || 0;
+      rows.push([
+        new Date(v.created_at).toLocaleDateString(),
+        getTeam(v.assigned_to || ''),
+        getName(v.assigned_to || ''),
+        v.customer_name,
+        p?.name || 'Unknown',
+        p?.sku || '',
+        qty.toString(),
+        price.toLocaleString(),
+        (qty * price).toLocaleString(),
+        ((v as any).order_approval_status || 'pending'),
+        v.visit_status,
+      ]);
+    });
+    rows.sort((a, b) => (a[1] + a[2]).localeCompare(b[1] + b[2]));
+    downloadCSV(`sales_orders_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
+    toast({ title: 'Report downloaded' });
+  };
+
+  const downloadTeamExpensesReport = () => {
+    const headers = ['Team', 'Members', 'Total Claims', 'Approved (₹)', 'Pending (₹)', 'Rejected (₹)', 'Total (₹)'];
+    const teamNames = [...new Set(salespersonIds.map(uid => getTeam(uid)))];
+    const rows = teamNames.map(team => {
+      const members = salespersonIds.filter(uid => getTeam(uid) === team);
+      const tExp = expenses.filter(e => members.includes(e.user_id));
+      const sumBy = (status: string) => tExp.filter(e => e.approval_status === status).reduce((s, e) => s + Number(e.amount), 0);
+      const approved = sumBy('approved');
+      const pending = sumBy('pending');
+      const rejected = sumBy('rejected');
+      return [team, members.length.toString(), tExp.length.toString(), approved.toLocaleString(), pending.toLocaleString(), rejected.toLocaleString(), (approved + pending + rejected).toLocaleString()];
+    });
+    downloadCSV(`team_expenses_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
+    toast({ title: 'Report downloaded' });
+  };
+
+  const downloadDailyTrackingReport = () => {
+    const headers = ['Date', 'Salesperson', 'Team', 'Punch In', 'Punch Out', 'Total Distance (km)', 'Idle Time (min)', 'Active Visit Time (min)', 'Ping Count'];
+    const rows = dailySummaries.map(s => [
+      s.work_date,
+      getName(s.user_id),
+      getTeam(s.user_id),
+      s.punched_in_at ? new Date(s.punched_in_at).toLocaleTimeString() : '',
+      s.punched_out_at ? new Date(s.punched_out_at).toLocaleTimeString() : '',
+      Number(s.total_distance_km).toFixed(2),
+      String(s.total_idle_minutes ?? 0),
+      String(s.total_active_visit_minutes ?? 0),
+      String(s.ping_count ?? 0),
+    ]);
+    downloadCSV(`daily_tracking_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
+    toast({ title: 'Report downloaded' });
+  };
+
   const reports = [
     { title: 'Salesperson Performance', description: 'Individual metrics: visits, orders, hours, target achievement', icon: Target, action: downloadSalespersonPerformance },
     { title: 'Team Summary', description: 'Team-level aggregates: members, visits, orders, expenses', icon: Users, action: downloadTeamSummary },
+    { title: 'Sales Orders (Team & Salesman)', description: 'Line-item orders grouped by team and salesperson with totals', icon: ShoppingCart, action: downloadSalesOrdersReport },
+    { title: 'Team Expenses', description: 'Team-wise expense totals split by approved, pending, and rejected', icon: Wallet, action: downloadTeamExpensesReport },
+    { title: 'Daily Tracking (Per Salesperson)', description: 'Daily distance, idle time, and punch in/out times', icon: Activity, action: downloadDailyTrackingReport },
     { title: 'Visits Detail', description: 'All visits with dates, locations, status, and check-in/out times', icon: MapPin, action: downloadVisitsDetail },
     { title: 'Expenses Report', description: 'All expenses with salesperson, category, amounts, and approval status', icon: Receipt, action: downloadExpensesReport },
     { title: 'Attendance Report (30 days)', description: 'Days active, check-ins per day, total hours for last 30 days', icon: FileText, action: downloadAttendanceReport },
