@@ -162,7 +162,9 @@ const LeaderboardPage: React.FC = () => {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-header">Leaderboard</h1>
-          <p className="text-muted-foreground mt-1">Top performing salespersons by verified visits</p>
+          <p className="text-muted-foreground mt-1">
+            {role === 'team_lead' ? 'Your team — ' : ''}Top performers this month · resets on the 1st
+          </p>
         </div>
         {role === 'admin' && teams.length > 0 && (
           <Select value={selectedTeam} onValueChange={setSelectedTeam}>
