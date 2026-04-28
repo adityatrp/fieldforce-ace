@@ -76,14 +76,36 @@ const LeaderboardPage: React.FC = () => {
     return membership?.team_id || '';
   };
 
+  // Current calendar month window — leaderboard resets on the 1st of every month
+  const monthStart = useMemo(() => {
+    const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d;
+  }, []);
+  const monthEnd = useMemo(() => {
+    const d = new Date(monthStart); d.setMonth(d.getMonth() + 1); return d;
+  }, [monthStart]);
+
+  // Team Lead's own team membership
+  const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
+  const myTeamId = myTeamMembership?.team_id;
+
   const leaderboard = useMemo(() => {
     const salespersonIds = roles.filter(r => r.role === 'salesperson').map(r => r.user_id);
 
     return profiles
       .filter(p => salespersonIds.includes(p.user_id))
-      .filter(p => selectedTeam === 'all' || getTeamId(p.user_id) === selectedTeam)
+      .filter(p => {
+        // Team Lead is restricted to own team only
+        if (role === 'team_lead') return getTeamId(p.user_id) === myTeamId;
+        return selectedTeam === 'all' || getTeamId(p.user_id) === selectedTeam;
+      })
       .map(p => {
-        const userVisits = visits.filter(v => v.assigned_to === p.user_id && v.visit_status === 'verified');
+        // Only count visits inside the current month — leaderboard resets monthly
+        const userVisits = visits.filter(v =>
+          v.assigned_to === p.user_id &&
+          v.visit_status === 'verified' &&
+          new Date(v.checked_in_at) >= monthStart &&
+          new Date(v.checked_in_at) < monthEnd
+        );
         const userTarget = targets.find(t => t.user_id === p.user_id);
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         const thisWeek = userVisits.filter(v => new Date(v.checked_in_at) >= weekAgo);
@@ -112,7 +134,7 @@ const LeaderboardPage: React.FC = () => {
           achievementPct,
         };
       }).sort((a, b) => b.totalVisits - a.totalVisits || b.orders - a.orders);
-  }, [profiles, visits, targets, roles, selectedTeam, teamMembers, teams]);
+  }, [profiles, visits, targets, roles, selectedTeam, teamMembers, teams, role, myTeamId, monthStart, monthEnd]);
 
   // Team-wise aggregation for admin
   const teamStats = useMemo(() => {
