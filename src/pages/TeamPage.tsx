@@ -614,7 +614,7 @@ const TeamPage: React.FC = () => {
         <SelectContent>
           {filteredSalespersons.map(sp => (
             <SelectItem key={sp.user_id} value={sp.user_id}>
-              {sp.full_name || sp.email} ({getTeamName(sp.user_id)})
+              {sp.full_name || sp.email}{sp.user_id === user?.id ? ' (You)' : ''} ({getTeamName(sp.user_id)})
             </SelectItem>
           ))}
           {filteredSalespersons.length === 0 && (
