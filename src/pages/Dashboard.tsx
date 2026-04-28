@@ -587,37 +587,58 @@ const Dashboard: React.FC = () => {
         </Card>
       )}
 
-      {/* Month-end target non-achievers */}
-      {nonAchievers.length > 0 && !selectedSP && (
+      {/* Missed-target list (daily / weekly / monthly toggle for Lead & Admin) */}
+      {showMissedSection && !selectedSP && (
         <Card className="border-destructive/30">
           <CardHeader>
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-destructive" />
-              Target Not Achieved (Month-End)
-            </CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-destructive" />
+                Target Not Achieved {missedPeriod === 'monthly' ? '(Month-End)' : missedPeriod === 'weekly' ? '(This Week)' : '(Today)'}
+              </CardTitle>
+              <div className="inline-flex rounded-lg border bg-muted/40 p-0.5 text-xs">
+                {(['daily','weekly','monthly'] as const).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setMissedPeriod(p)}
+                    className={`px-3 py-1 rounded-md font-medium capitalize transition-colors ${missedPeriod === p ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {nonAchievers.map(sp => (
-                <div key={sp.uid} className="flex items-center justify-between p-3 rounded-lg bg-destructive/5">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-destructive/10 flex items-center justify-center text-sm font-bold text-destructive">
-                      {sp.name[0]}
+            {nonAchievers.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {missedPeriod === 'monthly' && !isMonthEnd
+                  ? 'Month-end summary appears after the 25th.'
+                  : 'No salespersons have missed this period\'s target. 🎉'}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {nonAchievers.map(sp => (
+                  <div key={sp.uid} className="flex items-center justify-between p-3 rounded-lg bg-destructive/5">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-destructive/10 flex items-center justify-center text-sm font-bold text-destructive">
+                        {sp.name[0]}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{sp.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-medium text-primary/80">{sp.teamName}</span>
+                          {' · '}₹{Math.round(sp.achieved).toLocaleString()} of ₹{sp.targetVal.toLocaleString()} ({sp.pct}%)
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-sm">{sp.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        <span className="font-medium text-primary/80">{sp.teamName}</span>
-                        {' · '}₹{Math.round(sp.achieved).toLocaleString()} of ₹{sp.targetVal.toLocaleString()} ({sp.pct}%)
-                      </p>
-                    </div>
+                    <Button size="sm" variant="outline" onClick={() => setSelectedSP(sp.uid)}>
+                      View
+                    </Button>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => setSelectedSP(sp.uid)}>
-                    View
-                  </Button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
