@@ -86,6 +86,33 @@ const ReportsPage: React.FC = () => {
     enabled: !!user,
   });
 
+  const { data: orderItems = [] } = useQuery({
+    queryKey: ['report-order-items'],
+    queryFn: async () => {
+      const { data } = await supabase.from('visit_order_items').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: products = [] } = useQuery({
+    queryKey: ['report-products'],
+    queryFn: async () => {
+      const { data } = await supabase.from('products').select('*');
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: dailySummaries = [] } = useQuery({
+    queryKey: ['report-daily-summaries'],
+    queryFn: async () => {
+      const { data } = await supabase.from('attendance_daily_summary').select('*').order('work_date', { ascending: false });
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
   const getName = (userId: string) => profiles.find(p => p.user_id === userId)?.full_name || 'Unknown';
   const getTeam = (userId: string) => {
     const m = teamMembers.find(tm => tm.user_id === userId);
