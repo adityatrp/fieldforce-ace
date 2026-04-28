@@ -698,7 +698,7 @@ const VisitsPage: React.FC = () => {
                   <Eye className="h-4 w-4" />
                 </Button>
               )}
-              {v.visit_status === 'verified' && role === 'salesperson' && (
+              {v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && (
                 <Button size="sm" variant="outline" className="h-9 native-btn rounded-xl text-xs" onClick={() => openEditOrder(v)}>
                   <Package className="h-3.5 w-3.5 mr-1" />
                   Edit Order
