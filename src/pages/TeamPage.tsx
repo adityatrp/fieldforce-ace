@@ -190,13 +190,15 @@ const TeamPage: React.FC = () => {
   const salespersons = useMemo(() => {
     return profiles.filter(p => {
       const r = roles.find(r => r.user_id === p.user_id);
+      // Team Lead may also assign visits to themselves
+      if (role === 'team_lead' && p.user_id === user?.id) return true;
       if (r?.role !== 'salesperson') return false;
       if (role === 'team_lead') {
         return myTeamMemberIds.includes(p.user_id);
       }
       return true;
     });
-  }, [profiles, roles, role, myTeamMemberIds]);
+  }, [profiles, roles, role, myTeamMemberIds, user]);
 
   const filteredSalespersons = useMemo(() => {
     if (!spSearch.trim()) return salespersons;
@@ -612,7 +614,7 @@ const TeamPage: React.FC = () => {
         <SelectContent>
           {filteredSalespersons.map(sp => (
             <SelectItem key={sp.user_id} value={sp.user_id}>
-              {sp.full_name || sp.email} ({getTeamName(sp.user_id)})
+              {sp.full_name || sp.email}{sp.user_id === user?.id ? ' (You)' : ''} ({getTeamName(sp.user_id)})
             </SelectItem>
           ))}
           {filteredSalespersons.length === 0 && (
@@ -652,7 +654,7 @@ const TeamPage: React.FC = () => {
         <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={grabCurrentLocation}>
           <Navigation className="h-4 w-4" /> Use My Current Location
         </Button>
-        <p className="text-xs text-muted-foreground">Salesperson must be within 40m of this location to verify.</p>
+        <p className="text-xs text-muted-foreground">Salesperson must be within 100m of this location to verify.</p>
       </div>
       {renderSalespersonSelect()}
       <div className="space-y-2">

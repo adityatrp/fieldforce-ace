@@ -179,7 +179,7 @@ const VisitsPage: React.FC = () => {
       const { data } = await supabase.from('products').select('*').eq('active', true);
       return data || [];
     },
-    enabled: !!user && role === 'salesperson',
+    enabled: !!user && (role === 'salesperson' || role === 'team_lead'),
   });
 
   const { data: visitOrderItems = [] } = useQuery({
@@ -698,13 +698,35 @@ const VisitsPage: React.FC = () => {
                   <Eye className="h-4 w-4" />
                 </Button>
               )}
-              {v.visit_status === 'verified' && role === 'salesperson' && (
+              {v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && (
                 <Button size="sm" variant="outline" className="h-9 native-btn rounded-xl text-xs" onClick={() => openEditOrder(v)}>
                   <Package className="h-3.5 w-3.5 mr-1" />
                   Edit Order
                 </Button>
               )}
               {v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming && (
+                <Button
+                  size="sm"
+                  className="h-9 native-btn rounded-xl text-xs"
+                  onClick={() => {
+                    if (!dayStarted) {
+                      toast({
+                        title: 'Punch in first',
+                        description: 'You must punch in for the day before checking into a visit.',
+                        variant: 'destructive',
+                      });
+                      return;
+                    }
+                    setCheckInDialog(v.id);
+                  }}
+                  disabled={!dayStarted}
+                  title={!dayStarted ? 'Punch in to start your day before checking in' : undefined}
+                >
+                  <Navigation className="h-3.5 w-3.5 mr-1" />
+                  Check In
+                </Button>
+              )}
+              {v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming && (
                 <Button size="sm" className="h-9 native-btn rounded-xl text-xs" onClick={() => setCheckInDialog(v.id)}>
                   <Navigation className="h-3.5 w-3.5 mr-1" />
                   Check In
@@ -801,8 +823,8 @@ const VisitsPage: React.FC = () => {
           { v: pending, l: 'Pending', c: 'text-warning' },
         ].map(s => (
           <Card key={s.l} className="stat-card text-center py-3 px-2">
-            <p className={`text-xl font-bold ${s.c}`}>{s.v}</p>
-            <p className="text-[10px] text-muted-foreground">{s.l}</p>
+            <p className={`text-2xl font-bold ${s.c}`}>{s.v}</p>
+            <p className="text-xs font-medium text-muted-foreground mt-0.5">{s.l}</p>
           </Card>
         ))}
       </div>

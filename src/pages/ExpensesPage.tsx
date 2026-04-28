@@ -219,26 +219,26 @@ const ExpensesPage: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Card className="stat-card">
             <div className="text-center">
-              <p className="text-xl font-bold">₹{totalAll.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Total {role === 'team_lead' ? '(My Team)' : '(All Teams)'}</p>
+              <p className="text-2xl font-bold">₹{totalAll.toLocaleString()}</p>
+              <p className="text-xs font-medium text-muted-foreground mt-0.5">Total {role === 'team_lead' ? '(My Team)' : '(All Teams)'}</p>
             </div>
           </Card>
           <Card className="stat-card">
             <div className="text-center">
-              <p className="text-xl font-bold text-success">₹{totalApproved.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Approved</p>
+              <p className="text-2xl font-bold text-success">₹{totalApproved.toLocaleString()}</p>
+              <p className="text-xs font-medium text-muted-foreground mt-0.5">Approved</p>
             </div>
           </Card>
           <Card className="stat-card">
             <div className="text-center">
-              <p className="text-xl font-bold text-warning">₹{totalPending.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Pending</p>
+              <p className="text-2xl font-bold text-warning">₹{totalPending.toLocaleString()}</p>
+              <p className="text-xs font-medium text-muted-foreground mt-0.5">Pending</p>
             </div>
           </Card>
           <Card className="stat-card">
             <div className="text-center">
-              <p className="text-xl font-bold text-destructive">₹{totalRejected.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Rejected</p>
+              <p className="text-2xl font-bold text-destructive">₹{totalRejected.toLocaleString()}</p>
+              <p className="text-xs font-medium text-muted-foreground mt-0.5">Rejected</p>
             </div>
           </Card>
         </div>
