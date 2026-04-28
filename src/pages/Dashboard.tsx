@@ -370,25 +370,35 @@ const Dashboard: React.FC = () => {
   const scopedTargetTotal = periodCards.find(p => p.period === 'monthly')?.total || 0;
   const scopedTargetPct = periodCards.find(p => p.period === 'monthly')?.pct || 0;
 
-  // End-of-month non-achievers (only show late in month or after month end)
+  // Missed-target list — Lead/Admin can switch between daily / weekly / monthly
+  const [missedPeriod, setMissedPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const dayOfMonth = new Date().getDate();
   const isMonthEnd = dayOfMonth >= 25;
+  const showMissedSection = (role === 'admin' || role === 'team_lead') && (missedPeriod !== 'monthly' || isMonthEnd);
   const nonAchievers = useMemo(() => {
-    if (!isMonthEnd || (role !== 'admin' && role !== 'team_lead')) return [];
+    if (role !== 'admin' && role !== 'team_lead') return [];
     const spIds = role === 'team_lead'
       ? myTeamMemberIds.filter(id => roles.find(r => r.user_id === id)?.role === 'salesperson')
       : (adminTeamMemberIds || roles.filter(r => r.role === 'salesperson').map(r => r.user_id));
+
+    const periodStartISO = missedPeriod === 'daily' ? todayISO : missedPeriod === 'weekly' ? weekISO : null;
+    const from = missedPeriod === 'daily' ? todayStart : missedPeriod === 'weekly' ? weekStart : monthStart;
+    const to = missedPeriod === 'daily' ? tomorrowStart : missedPeriod === 'weekly' ? weekEnd : monthEnd;
+
     return spIds.map(uid => {
-      const target = targets.find(t => t.user_id === uid);
+      const target = targets.find(t =>
+        t.user_id === uid && t.period === missedPeriod && (((t as any).period_start || null) === periodStartISO),
+      );
       const targetVal = target ? Number(target.target_value) : 0;
-      const achieved = monthSalesByUser.approved[uid] || 0;
+      const achieved = salesInRange(uid, from, to);
       const pct = targetVal > 0 ? Math.round((achieved / targetVal) * 100) : 0;
       const name = profiles.find(p => p.user_id === uid)?.full_name || 'Unknown';
       const membership = teamMembers.find(tm => tm.user_id === uid);
       const teamName = membership ? teams.find(t => t.id === membership.team_id)?.name || 'Unassigned' : 'Unassigned';
       return { uid, name, teamName, targetVal, achieved, pct };
     }).filter(x => x.targetVal > 0 && x.pct < 100);
-  }, [isMonthEnd, role, myTeamMemberIds, adminTeamMemberIds, roles, targets, monthSalesByUser, profiles, teamMembers, teams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, myTeamMemberIds, adminTeamMemberIds, roles, targets, missedPeriod, profiles, teamMembers, teams, visits, orderItems]);
 
   const periodSelector = (
     <Select value={period} onValueChange={(v) => setPeriod(v as DashboardPeriod)}>
