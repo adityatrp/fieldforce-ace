@@ -190,13 +190,15 @@ const TeamPage: React.FC = () => {
   const salespersons = useMemo(() => {
     return profiles.filter(p => {
       const r = roles.find(r => r.user_id === p.user_id);
+      // Team Lead may also assign visits to themselves
+      if (role === 'team_lead' && p.user_id === user?.id) return true;
       if (r?.role !== 'salesperson') return false;
       if (role === 'team_lead') {
         return myTeamMemberIds.includes(p.user_id);
       }
       return true;
     });
-  }, [profiles, roles, role, myTeamMemberIds]);
+  }, [profiles, roles, role, myTeamMemberIds, user]);
 
   const filteredSalespersons = useMemo(() => {
     if (!spSearch.trim()) return salespersons;
