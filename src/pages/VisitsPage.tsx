@@ -801,8 +801,8 @@ const VisitsPage: React.FC = () => {
           { v: pending, l: 'Pending', c: 'text-warning' },
         ].map(s => (
           <Card key={s.l} className="stat-card text-center py-3 px-2">
-            <p className={`text-xl font-bold ${s.c}`}>{s.v}</p>
-            <p className="text-[10px] text-muted-foreground">{s.l}</p>
+            <p className={`text-2xl font-bold ${s.c}`}>{s.v}</p>
+            <p className="text-xs font-medium text-muted-foreground mt-0.5">{s.l}</p>
           </Card>
         ))}
       </div>
