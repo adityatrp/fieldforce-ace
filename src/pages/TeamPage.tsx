@@ -652,7 +652,7 @@ const TeamPage: React.FC = () => {
         <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={grabCurrentLocation}>
           <Navigation className="h-4 w-4" /> Use My Current Location
         </Button>
-        <p className="text-xs text-muted-foreground">Salesperson must be within 40m of this location to verify.</p>
+        <p className="text-xs text-muted-foreground">Salesperson must be within 100m of this location to verify.</p>
       </div>
       {renderSalespersonSelect()}
       <div className="space-y-2">
