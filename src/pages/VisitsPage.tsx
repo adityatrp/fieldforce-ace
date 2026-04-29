@@ -457,10 +457,16 @@ const VisitsPage: React.FC = () => {
 
       const isVerified = distance <= GPS_THRESHOLD_METERS;
       const now = new Date().toISOString();
+      // Use the moment the salesperson opened the check-in dialog as the
+      // visit start time. The gap from open → submit (time spent with the
+      // customer / capturing photo / order) becomes part of the active visit
+      // window and is therefore subtracted from idle time in the daily summary.
+      const startedAt = checkInOpenedAtRef.current || now;
       const finalDiscount = orderReceived && orderItems.length > 0 ? discountPercent : 0;
 
       const { error } = await supabase.from('visits').update({
-        checked_in_at: now,
+        checked_in_at: startedAt,
+        checked_out_at: now,
         latitude: coords.lat,
         longitude: coords.lng,
         photo_url: photoUrl || undefined,
