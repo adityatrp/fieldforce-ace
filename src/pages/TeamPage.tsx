@@ -1429,7 +1429,76 @@ const TeamPage: React.FC = () => {
             </DialogContent>
           </Dialog>
 
-          {isLoading ? (
+          {/* Reset Password Dialog */}
+          <Dialog open={!!resetPasswordFor} onOpenChange={(o) => { if (!o) { setResetPasswordFor(null); setRevealedPassword(null); } }}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>Reset Password</DialogTitle></DialogHeader>
+              <div className="space-y-4 mt-2">
+                {!revealedPassword ? (
+                  <>
+                    <p className="text-sm">
+                      Generate a new password for <strong>{resetPasswordFor?.full_name}</strong> ({resetPasswordFor?.email}).
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      The user's existing password will be replaced. Read the new password to them so they can log in.
+                    </p>
+                    <Button
+                      className="w-full"
+                      disabled={resettingPassword}
+                      onClick={async () => {
+                        if (!resetPasswordFor) return;
+                        setResettingPassword(true);
+                        try {
+                          const { data, error } = await supabase.functions.invoke('admin-reset-password', {
+                            body: { target_user_id: resetPasswordFor.user_id },
+                          });
+                          if (error) throw error;
+                          if (data?.error) throw new Error(data.error);
+                          setRevealedPassword(data.new_password);
+                        } catch (err: any) {
+                          toast({ title: 'Failed to reset password', description: err.message, variant: 'destructive' });
+                        } finally {
+                          setResettingPassword(false);
+                        }
+                      }}
+                    >
+                      {resettingPassword ? 'Generating...' : 'Generate New Password'}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="p-4 bg-muted rounded-xl space-y-2">
+                      <p className="text-xs text-muted-foreground">New password for {resetPasswordFor?.full_name}:</p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-lg font-mono font-bold flex-1 break-all">{revealedPassword}</code>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          onClick={() => {
+                            navigator.clipboard.writeText(revealedPassword);
+                            toast({ title: 'Password copied' });
+                          }}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Share this password with the user. It will not be shown again. They can change it anytime after logging in.
+                    </p>
+                    <Button
+                      className="w-full"
+                      onClick={() => { setResetPasswordFor(null); setRevealedPassword(null); }}
+                    >
+                      Done
+                    </Button>
+                  </>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+
             <p className="text-center text-muted-foreground py-8">Loading team...</p>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
