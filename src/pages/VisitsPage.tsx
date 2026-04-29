@@ -139,6 +139,7 @@ const VisitsPage: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [checkInDialog, setCheckInDialog] = useState<string | null>(null);
+  const checkInOpenedAtRef = useRef<string | null>(null);
   const [viewDialog, setViewDialog] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
