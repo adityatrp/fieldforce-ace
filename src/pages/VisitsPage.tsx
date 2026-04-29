@@ -649,43 +649,18 @@ const VisitsPage: React.FC = () => {
 
     return (
       <Card key={v.id} className={`field-card ${isOverdueToday ? 'border-warning/50 bg-warning/5' : ''}`}>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
+        <CardContent className="p-4 space-y-3">
+          {/* Top: icon + customer name + location + date */}
+          <div className="flex items-start gap-3">
             <div className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 ${v.visit_status === 'verified' ? 'bg-success/10' : v.visit_status === 'failed' ? 'bg-destructive/10' : 'bg-accent/10'}`}>
               <StatusIcon className="h-5 w-5" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="font-semibold text-sm">{v.customer_name}</p>
-                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${config.color}`}>{config.label}</Badge>
-                {v.order_received && (() => {
-                  const s = (v as any).order_approval_status || 'pending';
-                  const cls = s === 'approved'
-                    ? 'bg-success/10 text-success border-success/20'
-                    : s === 'rejected'
-                      ? 'bg-destructive/10 text-destructive border-destructive/20'
-                      : 'bg-warning/10 text-warning border-warning/30';
-                  return (
-                    <Badge variant="outline" className={`${cls} text-[10px] px-1.5 py-0`}>
-                      <Package className="h-3 w-3 mr-0.5" /> Order · {s}
-                    </Badge>
-                  );
-                })()}
-                {isOverdueToday && (
-                  <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] px-1.5 py-0">
-                    {isPastDue ? '⚠ Past due' : '⏰ Due today'}
-                  </Badge>
-                )}
-                {isUpcoming && (
-                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[10px] px-1.5 py-0">
-                    📅 {new Date(scheduledMs).toLocaleDateString()}
-                  </Badge>
-                )}
-              </div>
+              <p className="font-semibold text-sm leading-tight break-words">{v.customer_name}</p>
               {v.location_name && (
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">📍 {v.location_name}</p>
+                <p className="text-xs text-muted-foreground mt-1 break-words">📍 {v.location_name}</p>
               )}
-              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <p className="text-xs text-muted-foreground">
                   {new Date(v.created_at).toLocaleDateString()}
                 </p>
@@ -699,80 +674,116 @@ const VisitsPage: React.FC = () => {
                 )}
               </div>
             </div>
-            <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
-              {(v.visit_status === 'verified' || v.visit_status === 'failed') && (
-                <Button size="sm" variant="ghost" className="h-9 w-9 p-0 native-btn" onClick={() => setViewDialog(v.id)}>
-                  <Eye className="h-4 w-4" />
-                </Button>
-              )}
-              {/* View on Map: salesperson sees the target on Google Maps. Available
-                  while punched in, even before checking in. Hidden after submission. */}
-              {v.visit_status === 'assigned' && v.assigned_to === user?.id && v.target_latitude && v.target_longitude && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-9 native-btn rounded-xl text-xs"
-                  disabled={role === 'salesperson' && !dayStarted}
-                  title={role === 'salesperson' && !dayStarted ? 'Punch in to view location on map' : undefined}
-                  onClick={() => {
-                    if (role === 'salesperson' && !dayStarted) {
-                      toast({
-                        title: 'Punch in first',
-                        description: 'You can view the location on the map after punching in.',
-                        variant: 'destructive',
-                      });
-                      return;
-                    }
-                    const url = `https://www.google.com/maps/search/?api=1&query=${v.target_latitude},${v.target_longitude}`;
-                    window.open(url, '_blank', 'noopener,noreferrer');
-                  }}
-                >
-                  <MapIcon className="h-3.5 w-3.5 mr-1" />
-                  View on Map
-                </Button>
-              )}
-              {v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && ((v as any).order_approval_status || 'pending') !== 'approved' && (
-                <Button size="sm" variant="outline" className="h-9 native-btn rounded-xl text-xs" onClick={() => openEditOrder(v)}>
-                  <Package className="h-3.5 w-3.5 mr-1" />
-                  Edit Order
-                </Button>
-              )}
-              {v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming && (
-                <Button
-                  size="sm"
-                  className="h-9 native-btn rounded-xl text-xs"
-                  onClick={() => {
-                    if (!dayStarted) {
-                      toast({
-                        title: 'Punch in first',
-                        description: 'You must punch in for the day before checking into a visit.',
-                        variant: 'destructive',
-                      });
-                      return;
-                    }
-                    checkInOpenedAtRef.current = new Date().toISOString();
-                    setCheckInDialog(v.id);
-                  }}
-                  disabled={!dayStarted}
-                  title={!dayStarted ? 'Punch in to start your day before checking in' : undefined}
-                >
-                  <Navigation className="h-3.5 w-3.5 mr-1" />
-                  Check In
-                </Button>
-              )}
-              {v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming && (
-                <Button size="sm" className="h-9 native-btn rounded-xl text-xs" onClick={() => { checkInOpenedAtRef.current = new Date().toISOString(); setCheckInDialog(v.id); }}>
-                  <Navigation className="h-3.5 w-3.5 mr-1" />
-                  Check In
-                </Button>
-              )}
-              {(v.visit_status === 'verified' || v.visit_status === 'checked_in') && !v.checked_out_at && (
-                <Button size="sm" variant="outline" className="h-9 native-btn rounded-xl text-xs" onClick={() => checkOutMutation.mutate(v.id)}>
-                  Check Out
-                </Button>
-              )}
-            </div>
           </div>
+
+          {/* Middle: status badges */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${config.color}`}>{config.label}</Badge>
+            {v.order_received && (() => {
+              const s = (v as any).order_approval_status || 'pending';
+              const cls = s === 'approved'
+                ? 'bg-success/10 text-success border-success/20'
+                : s === 'rejected'
+                  ? 'bg-destructive/10 text-destructive border-destructive/20'
+                  : 'bg-warning/10 text-warning border-warning/30';
+              return (
+                <Badge variant="outline" className={`${cls} text-[10px] px-1.5 py-0`}>
+                  <Package className="h-3 w-3 mr-0.5" /> Order · {s}
+                </Badge>
+              );
+            })()}
+            {isOverdueToday && (
+              <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] px-1.5 py-0">
+                {isPastDue ? '⚠ Past due' : '⏰ Due today'}
+              </Badge>
+            )}
+            {isUpcoming && (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[10px] px-1.5 py-0">
+                📅 {new Date(scheduledMs).toLocaleDateString()}
+              </Badge>
+            )}
+          </div>
+
+          {/* Bottom: action buttons row */}
+          {(() => {
+            const showView = (v.visit_status === 'verified' || v.visit_status === 'failed');
+            const showMap = v.visit_status === 'assigned' && v.assigned_to === user?.id && v.target_latitude && v.target_longitude;
+            const showEditOrder = v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && ((v as any).order_approval_status || 'pending') !== 'approved';
+            const showCheckInSales = v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming;
+            const showCheckInLead = v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming;
+            const showCheckOut = (v.visit_status === 'verified' || v.visit_status === 'checked_in') && !v.checked_out_at;
+            const hasAny = showView || showMap || showEditOrder || showCheckInSales || showCheckInLead || showCheckOut;
+            if (!hasAny) return null;
+            return (
+              <div className="flex gap-2 flex-wrap pt-1 border-t border-border/50">
+                {showView && (
+                  <Button size="sm" variant="ghost" className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[90px]" onClick={() => setViewDialog(v.id)}>
+                    <Eye className="h-3.5 w-3.5 mr-1" /> View
+                  </Button>
+                )}
+                {showMap && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]"
+                    disabled={role === 'salesperson' && !dayStarted}
+                    title={role === 'salesperson' && !dayStarted ? 'Punch in to view location on map' : undefined}
+                    onClick={() => {
+                      if (role === 'salesperson' && !dayStarted) {
+                        toast({
+                          title: 'Punch in first',
+                          description: 'You can view the location on the map after punching in.',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      const url = `https://www.google.com/maps/search/?api=1&query=${v.target_latitude},${v.target_longitude}`;
+                      window.open(url, '_blank', 'noopener,noreferrer');
+                    }}
+                  >
+                    <MapIcon className="h-3.5 w-3.5 mr-1" /> View on Map
+                  </Button>
+                )}
+                {showEditOrder && (
+                  <Button size="sm" variant="outline" className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]" onClick={() => openEditOrder(v)}>
+                    <Package className="h-3.5 w-3.5 mr-1" /> Edit Order
+                  </Button>
+                )}
+                {showCheckInSales && (
+                  <Button
+                    size="sm"
+                    className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]"
+                    onClick={() => {
+                      if (!dayStarted) {
+                        toast({
+                          title: 'Punch in first',
+                          description: 'You must punch in for the day before checking into a visit.',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      checkInOpenedAtRef.current = new Date().toISOString();
+                      setCheckInDialog(v.id);
+                    }}
+                    disabled={!dayStarted}
+                    title={!dayStarted ? 'Punch in to start your day before checking in' : undefined}
+                  >
+                    <Navigation className="h-3.5 w-3.5 mr-1" /> Check In
+                  </Button>
+                )}
+                {showCheckInLead && (
+                  <Button size="sm" className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]" onClick={() => { checkInOpenedAtRef.current = new Date().toISOString(); setCheckInDialog(v.id); }}>
+                    <Navigation className="h-3.5 w-3.5 mr-1" /> Check In
+                  </Button>
+                )}
+                {showCheckOut && (
+                  <Button size="sm" variant="outline" className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]" onClick={() => checkOutMutation.mutate(v.id)}>
+                    Check Out
+                  </Button>
+                )}
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
     );
