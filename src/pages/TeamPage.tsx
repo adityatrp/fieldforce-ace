@@ -1456,6 +1456,20 @@ const TeamPage: React.FC = () => {
                           <p className="text-xs text-muted-foreground mt-2">
                             Visits: {memberVisits.length} · Verified: {verified}
                           </p>
+                          {(role === 'admin' || (role === 'team_lead' && p.user_id !== user?.id && userRole?.role !== 'admin')) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-3 h-8 text-xs gap-1.5"
+                              onClick={() => {
+                                setRevealedPassword(null);
+                                setResetPasswordFor({ user_id: p.user_id, full_name: p.full_name || 'this user', email: p.email });
+                              }}
+                            >
+                              <KeyRound className="h-3.5 w-3.5" />
+                              Reset Password
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>
