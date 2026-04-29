@@ -1499,6 +1499,7 @@ const TeamPage: React.FC = () => {
             </DialogContent>
           </Dialog>
 
+          {isLoading ? (
             <p className="text-center text-muted-foreground py-8">Loading team...</p>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
