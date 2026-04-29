@@ -1,6 +1,6 @@
 ---
 name: Order approval
-description: Visit orders need TL/Admin approval; pending vs approved sales are tracked separately on Dashboard/Leaderboard/Reports. Approvals queue lives on Team page.
+description: Visit orders need TL/Admin approval; pending vs approved sales are tracked separately on Dashboard/Leaderboard/Reports. Approvals queue lives on Team page. Salesperson cannot edit an order once approved.
 type: feature
 ---
 - New visits with orders default to `visits.order_approval_status = 'pending'`.
@@ -9,6 +9,7 @@ type: feature
   2. Visit Details dialog (legacy) on the Visits tab — same mutation.
 - Approval sets `order_approved_by` + `order_approved_at`.
 - Rejected orders contribute zero to sales totals.
+- Once `order_approval_status = 'approved'`, the salesperson's "Edit Order" button is hidden on VisitsPage. Pending and rejected orders can still be edited.
 - Dashboard: Sales Target card shows approved sales as the headline; pending appears as a sub-line "₹X pending TL approval".
 - Leaderboard order counts and Top Performers count only `approved` orders.
 - Reports CSV: salesperson + team summaries split into "Orders Approved" / "Orders Pending"; visits_detail adds an "Order Approval" column.

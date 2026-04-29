@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye, Plus, Minus, Search, Percent, Play, LocateFixed, Route } from 'lucide-react';
+import { MapPin, Camera, Clock, CheckCircle2, XCircle, Navigation, Package, Eye, Plus, Minus, Search, Percent, Play, LocateFixed, Route, Map as MapIcon } from 'lucide-react';
 import SignedImage from '@/components/SignedImage';
 import { compressImage } from '@/lib/imageCompress';
 import CameraCapture from '@/components/CameraCapture';
@@ -139,6 +139,7 @@ const VisitsPage: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [checkInDialog, setCheckInDialog] = useState<string | null>(null);
+  const checkInOpenedAtRef = useRef<string | null>(null);
   const [viewDialog, setViewDialog] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
@@ -456,10 +457,16 @@ const VisitsPage: React.FC = () => {
 
       const isVerified = distance <= GPS_THRESHOLD_METERS;
       const now = new Date().toISOString();
+      // Use the moment the salesperson opened the check-in dialog as the
+      // visit start time. The gap from open → submit (time spent with the
+      // customer / capturing photo / order) becomes part of the active visit
+      // window and is therefore subtracted from idle time in the daily summary.
+      const startedAt = checkInOpenedAtRef.current || now;
       const finalDiscount = orderReceived && orderItems.length > 0 ? discountPercent : 0;
 
       const { error } = await supabase.from('visits').update({
-        checked_in_at: now,
+        checked_in_at: startedAt,
+        checked_out_at: now,
         latitude: coords.lat,
         longitude: coords.lng,
         photo_url: photoUrl || undefined,
@@ -692,13 +699,39 @@ const VisitsPage: React.FC = () => {
                 )}
               </div>
             </div>
-            <div className="flex gap-1.5 shrink-0">
+            <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
               {(v.visit_status === 'verified' || v.visit_status === 'failed') && (
                 <Button size="sm" variant="ghost" className="h-9 w-9 p-0 native-btn" onClick={() => setViewDialog(v.id)}>
                   <Eye className="h-4 w-4" />
                 </Button>
               )}
-              {v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && (
+              {/* View on Map: salesperson sees the target on Google Maps. Available
+                  while punched in, even before checking in. Hidden after submission. */}
+              {v.visit_status === 'assigned' && v.assigned_to === user?.id && v.target_latitude && v.target_longitude && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 native-btn rounded-xl text-xs"
+                  disabled={role === 'salesperson' && !dayStarted}
+                  title={role === 'salesperson' && !dayStarted ? 'Punch in to view location on map' : undefined}
+                  onClick={() => {
+                    if (role === 'salesperson' && !dayStarted) {
+                      toast({
+                        title: 'Punch in first',
+                        description: 'You can view the location on the map after punching in.',
+                        variant: 'destructive',
+                      });
+                      return;
+                    }
+                    const url = `https://www.google.com/maps/search/?api=1&query=${v.target_latitude},${v.target_longitude}`;
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                  }}
+                >
+                  <MapIcon className="h-3.5 w-3.5 mr-1" />
+                  View on Map
+                </Button>
+              )}
+              {v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && ((v as any).order_approval_status || 'pending') !== 'approved' && (
                 <Button size="sm" variant="outline" className="h-9 native-btn rounded-xl text-xs" onClick={() => openEditOrder(v)}>
                   <Package className="h-3.5 w-3.5 mr-1" />
                   Edit Order
@@ -717,6 +750,7 @@ const VisitsPage: React.FC = () => {
                       });
                       return;
                     }
+                    checkInOpenedAtRef.current = new Date().toISOString();
                     setCheckInDialog(v.id);
                   }}
                   disabled={!dayStarted}
@@ -727,7 +761,7 @@ const VisitsPage: React.FC = () => {
                 </Button>
               )}
               {v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming && (
-                <Button size="sm" className="h-9 native-btn rounded-xl text-xs" onClick={() => setCheckInDialog(v.id)}>
+                <Button size="sm" className="h-9 native-btn rounded-xl text-xs" onClick={() => { checkInOpenedAtRef.current = new Date().toISOString(); setCheckInDialog(v.id); }}>
                   <Navigation className="h-3.5 w-3.5 mr-1" />
                   Check In
                 </Button>

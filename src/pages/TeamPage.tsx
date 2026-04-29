@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft, Target, Bell, CheckCircle2, XCircle, ClipboardCheck } from 'lucide-react';
+import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft, Target, Bell, CheckCircle2, XCircle, ClipboardCheck, KeyRound, Copy } from 'lucide-react';
 import SignedImage from '@/components/SignedImage';
 
 const TeamPage: React.FC = () => {
@@ -55,6 +55,11 @@ const TeamPage: React.FC = () => {
   const [newUserName, setNewUserName] = useState('');
   const [newUserTeamId, setNewUserTeamId] = useState('');
   const [creatingUser, setCreatingUser] = useState(false);
+
+  // Password reset
+  const [resetPasswordFor, setResetPasswordFor] = useState<{ user_id: string; full_name: string; email: string } | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
 
   // Admin: team management
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -1424,6 +1429,76 @@ const TeamPage: React.FC = () => {
             </DialogContent>
           </Dialog>
 
+          {/* Reset Password Dialog */}
+          <Dialog open={!!resetPasswordFor} onOpenChange={(o) => { if (!o) { setResetPasswordFor(null); setRevealedPassword(null); } }}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>Reset Password</DialogTitle></DialogHeader>
+              <div className="space-y-4 mt-2">
+                {!revealedPassword ? (
+                  <>
+                    <p className="text-sm">
+                      Generate a new password for <strong>{resetPasswordFor?.full_name}</strong> ({resetPasswordFor?.email}).
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      The user's existing password will be replaced. Read the new password to them so they can log in.
+                    </p>
+                    <Button
+                      className="w-full"
+                      disabled={resettingPassword}
+                      onClick={async () => {
+                        if (!resetPasswordFor) return;
+                        setResettingPassword(true);
+                        try {
+                          const { data, error } = await supabase.functions.invoke('admin-reset-password', {
+                            body: { target_user_id: resetPasswordFor.user_id },
+                          });
+                          if (error) throw error;
+                          if (data?.error) throw new Error(data.error);
+                          setRevealedPassword(data.new_password);
+                        } catch (err: any) {
+                          toast({ title: 'Failed to reset password', description: err.message, variant: 'destructive' });
+                        } finally {
+                          setResettingPassword(false);
+                        }
+                      }}
+                    >
+                      {resettingPassword ? 'Generating...' : 'Generate New Password'}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="p-4 bg-muted rounded-xl space-y-2">
+                      <p className="text-xs text-muted-foreground">New password for {resetPasswordFor?.full_name}:</p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-lg font-mono font-bold flex-1 break-all">{revealedPassword}</code>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          onClick={() => {
+                            navigator.clipboard.writeText(revealedPassword);
+                            toast({ title: 'Password copied' });
+                          }}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Share this password with the user. It will not be shown again. They can change it anytime after logging in.
+                    </p>
+                    <Button
+                      className="w-full"
+                      onClick={() => { setResetPasswordFor(null); setRevealedPassword(null); }}
+                    >
+                      Done
+                    </Button>
+                  </>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+
           {isLoading ? (
             <p className="text-center text-muted-foreground py-8">Loading team...</p>
           ) : (
@@ -1451,6 +1526,20 @@ const TeamPage: React.FC = () => {
                           <p className="text-xs text-muted-foreground mt-2">
                             Visits: {memberVisits.length} · Verified: {verified}
                           </p>
+                          {(role === 'admin' || (role === 'team_lead' && p.user_id !== user?.id && userRole?.role !== 'admin')) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-3 h-8 text-xs gap-1.5"
+                              onClick={() => {
+                                setRevealedPassword(null);
+                                setResetPasswordFor({ user_id: p.user_id, full_name: p.full_name || 'this user', email: p.email });
+                              }}
+                            >
+                              <KeyRound className="h-3.5 w-3.5" />
+                              Reset Password
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>
