@@ -56,6 +56,11 @@ const TeamPage: React.FC = () => {
   const [newUserTeamId, setNewUserTeamId] = useState('');
   const [creatingUser, setCreatingUser] = useState(false);
 
+  // Password reset
+  const [resetPasswordFor, setResetPasswordFor] = useState<{ user_id: string; full_name: string; email: string } | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
+
   // Admin: team management
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
