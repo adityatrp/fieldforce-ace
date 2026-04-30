@@ -81,6 +81,23 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ open, onClose, onCapture,
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Embed timestamp watermark (current date & time) into the photo
+    const stamp = new Date().toLocaleString();
+    const fontSize = Math.max(18, Math.round(canvas.width / 40));
+    const padding = Math.round(fontSize * 0.6);
+    ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
+    ctx.textBaseline = 'bottom';
+    const textWidth = ctx.measureText(stamp).width;
+    const boxX = padding;
+    const boxY = canvas.height - padding - fontSize - padding;
+    const boxW = textWidth + padding * 2;
+    const boxH = fontSize + padding;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(stamp, boxX + padding, boxY + boxH - padding / 2);
+
     canvas.toBlob(
       blob => {
         if (!blob) return;
