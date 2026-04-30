@@ -30,11 +30,28 @@ npx cap run android
 
 ## 3. How the permission prompt works in the app
 
-The flow in `src/lib/backgroundTracker.ts` is:
+The flow in `src/lib/backgroundTracker.ts` + `src/pages/VisitsPage.tsx` is a
+**three-stage** sequence required by Google Play policy on Android 11+
+(apps may not request background location in the same prompt as foreground):
 
-1. When a salesperson **punches in**, the app calls `BackgroundGeolocation.addWatcher({ requestPermissions: true })`.
-2. Android first shows the **foreground** prompt: *Allow / While using app / Don't allow*.
-3. If the user picks "While using the app", the watcher fires a `NOT_AUTHORIZED` error the first time the app is backgrounded. The app then calls `BackgroundGeolocation.openSettings()`, which deep-links the user straight to **Settings → Apps → FieldForce → Location**, where they can switch to **"Allow all the time"**.
-4. From then on, tracking continues even when the screen is off.
+1. **Stage 1 — Foreground prompt.** When a salesperson **punches in**, the
+   app calls `BackgroundGeolocation.addWatcher({ requestPermissions: true })`.
+   Android shows the standard system prompt for `ACCESS_FINE_LOCATION` +
+   `ACCESS_COARSE_LOCATION`: *Allow / While using app / Don't allow*.
+2. **Stage 2 — Custom rationale dialog.** If the user picks
+   "While using the app", the watcher fires a `NOT_AUTHORIZED` /
+   background-denied error the first time the app is backgrounded. The
+   tracker invokes the `onNeedsBackgroundUpgrade` callback, which opens a
+   custom in-app dialog explaining *why* background location is needed.
+3. **Stage 3 — System settings deep-link.** Only after the user clicks
+   **"Agree"** on the rationale dialog does the app call
+   `requestBackgroundLocationUpgrade()` →
+   `BackgroundGeolocation.openSettings()`, which jumps straight to
+   **Settings → Apps → FieldForce → Location**, where the user can choose
+   **"Allow all the time"**.
 
-This two-step flow is required by Google Play policy on Android 11+ — apps are not allowed to ask for background location in the same prompt as foreground.
+From then on, tracking continues even when the screen is off.
+
+> The `ACCESS_BACKGROUND_LOCATION` permission MUST be declared in the
+> manifest (step 1 above) — without it, Android hides the "Allow all the
+> time" option entirely and stage 3 has no effect.
