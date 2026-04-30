@@ -1247,14 +1247,6 @@ const VisitsPage: React.FC = () => {
         onCapture={(file) => setPhoto(file)}
         title="Check-in Photo"
       />
-      <CameraCapture
-        open={extraCameraOpen}
-        onClose={() => setExtraCameraOpen(false)}
-        onCapture={(file) => {
-          if (extraPhotos.length < 5) setExtraPhotos(prev => [...prev, { file, caption: '' }]);
-        }}
-        title="Additional Photo"
-      />
 
       {/* Stage-2 rationale dialog. Shown ONLY after foreground location has
           been granted but the OS reports background location is denied.
