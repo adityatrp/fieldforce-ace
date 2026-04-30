@@ -1321,6 +1321,45 @@ const VisitsPage: React.FC = () => {
         }}
         title="Additional Photo"
       />
+
+      {/* Stage-2 rationale dialog. Shown ONLY after foreground location has
+          been granted but the OS reports background location is denied.
+          Clicking "Agree" deep-links into system Location settings so the
+          user can switch to "Allow all the time" (Android 11+ requirement). */}
+      <Dialog open={bgPermissionDialog} onOpenChange={setBgPermissionDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Enable Background Location</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              FieldForce needs <strong>background location access</strong> to
+              keep your route accurate while the app is minimized or your
+              screen is off during the workday.
+            </p>
+            <p>
+              On the next screen, please choose <strong>"Allow all the time"</strong> under Location.
+            </p>
+            <p className="text-xs">
+              We only track your location while you are punched in, and stop
+              the moment you punch out.
+            </p>
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setBgPermissionDialog(false)}>
+              Not now
+            </Button>
+            <Button
+              onClick={async () => {
+                setBgPermissionDialog(false);
+                await requestBackgroundLocationUpgrade();
+              }}
+            >
+              Agree & Open Settings
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
