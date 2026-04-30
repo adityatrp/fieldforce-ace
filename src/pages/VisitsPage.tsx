@@ -143,8 +143,6 @@ const VisitsPage: React.FC = () => {
   const [viewDialog, setViewDialog] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
-  const [extraPhotos, setExtraPhotos] = useState<{ file: File; caption: string }[]>([]);
-  const [extraCameraOpen, setExtraCameraOpen] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [orderReceived, setOrderReceived] = useState(false);
@@ -489,24 +487,6 @@ const VisitsPage: React.FC = () => {
 
       if (error) throw error;
 
-      // Upload optional extra photos with captions
-      if (extraPhotos.length > 0) {
-        const extraRows: { visit_id: string; photo_path: string; caption: string }[] = [];
-        for (let i = 0; i < extraPhotos.length; i++) {
-          const ep = extraPhotos[i];
-          try {
-            const compressedExtra = await compressImage(ep.file);
-            const epPath = `visits/${user!.id}/${Date.now()}_extra_${i}.jpg`;
-            const { error: epErr } = await supabase.storage.from('photos').upload(epPath, compressedExtra);
-            if (epErr) continue;
-            extraRows.push({ visit_id: visitId, photo_path: epPath, caption: ep.caption || '' });
-          } catch { /* skip failed extras */ }
-        }
-        if (extraRows.length > 0) {
-          await supabase.from('visit_extra_photos').insert(extraRows);
-        }
-      }
-
       if (orderReceived && orderItems.length > 0) {
         const discountMultiplier = 1 - (finalDiscount / 100);
         const items = orderItems.map(oi => ({
@@ -627,7 +607,7 @@ const VisitsPage: React.FC = () => {
     setCheckInDialog(null);
     setNotes('');
     setPhoto(null);
-    setExtraPhotos([]);
+    
     setCoords(null);
     setGpsStatus('idle');
     setOrderReceived(false);
@@ -1080,53 +1060,7 @@ const VisitsPage: React.FC = () => {
                 <p className="text-[10px] text-muted-foreground">Live camera only. Gallery uploads are disabled.</p>
               </div>
 
-              {/* Optional additional photos with captions (up to 5) */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">Additional Photos (optional, up to 5)</Label>
-                  <span className="text-[10px] text-muted-foreground">{extraPhotos.length}/5</span>
-                </div>
-                {extraPhotos.length < 5 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full h-10 gap-2 rounded-xl native-btn text-xs"
-                    onClick={() => setExtraCameraOpen(true)}
-                  >
-                    <Camera className="h-4 w-4" /> Capture Another Photo
-                  </Button>
-                )}
-                {extraPhotos.length > 0 && (
-                  <div className="space-y-2">
-                    {extraPhotos.map((ep, idx) => (
-                      <div key={idx} className="p-2 bg-muted/50 rounded-xl space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-medium truncate flex-1">📷 {ep.file.name}</p>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 rounded-lg text-destructive"
-                            onClick={() => setExtraPhotos(prev => prev.filter((_, i) => i !== idx))}
-                          >
-                            <Minus className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                        <Input
-                          value={ep.caption}
-                          onChange={e => {
-                            const v = e.target.value;
-                            setExtraPhotos(prev => prev.map((p, i) => i === idx ? { ...p, caption: v } : p));
-                          }}
-                          placeholder="Describe this photo..."
-                          className="h-8 text-xs rounded-lg"
-                          maxLength={200}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+
 
               <div className="space-y-2">
                 <Label className="text-xs">Notes</Label>
@@ -1312,14 +1246,6 @@ const VisitsPage: React.FC = () => {
         onClose={() => setMainCameraOpen(false)}
         onCapture={(file) => setPhoto(file)}
         title="Check-in Photo"
-      />
-      <CameraCapture
-        open={extraCameraOpen}
-        onClose={() => setExtraCameraOpen(false)}
-        onCapture={(file) => {
-          if (extraPhotos.length < 5) setExtraPhotos(prev => [...prev, { file, caption: '' }]);
-        }}
-        title="Additional Photo"
       />
 
       {/* Stage-2 rationale dialog. Shown ONLY after foreground location has
