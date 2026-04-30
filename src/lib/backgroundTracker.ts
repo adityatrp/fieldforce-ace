@@ -17,6 +17,11 @@ let lastWebPingTs = 0;
 let webTickInFlight = false;
 let wakeLock: { release: () => Promise<void> } | null = null;
 
+// Tracks whether the OS has reported a background-permission denial for the
+// active watcher. Used by the UI layer to decide if a rationale + settings
+// deep-link is still needed.
+let backgroundPermissionDenied = false;
+
 async function requestWakeLock() {
   try {
     const nav = navigator as unknown as {
@@ -65,83 +70,146 @@ function getWebPosition(): Promise<GeolocationPosition> {
   });
 }
 
+type BgGeoPlugin = {
+  addWatcher(
+    options: {
+      backgroundMessage?: string;
+      backgroundTitle?: string;
+      requestPermissions?: boolean;
+      stale?: boolean;
+      distanceFilter?: number;
+    },
+    callback: (
+      position?: { latitude: number; longitude: number; accuracy: number | null },
+      error?: { code?: string; message: string },
+    ) => void,
+  ): Promise<string>;
+  removeWatcher(options: { id: string }): Promise<void>;
+  openSettings(): Promise<void>;
+};
+
+async function getBgGeoPlugin(): Promise<BgGeoPlugin | null> {
+  try {
+    const { registerPlugin } = await import('@capacitor/core');
+    return registerPlugin<BgGeoPlugin>('BackgroundGeolocation');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * STAGE 3 trigger: deep-links the user to system Location settings so they
+ * can switch from "While using the app" to "Allow all the time".
+ *
+ * Android 11+ does not allow apps to request ACCESS_BACKGROUND_LOCATION via
+ * a runtime dialog — it MUST be granted via the system settings page. This
+ * is the closest thing to a "background permission prompt" available.
+ *
+ * Should be called ONLY after the user has:
+ *   1. Granted foreground (fine + coarse) location, and
+ *   2. Agreed to your custom Rationale UI.
+ */
+export async function requestBackgroundLocationUpgrade(): Promise<void> {
+  if (!isNativeApp()) return;
+  const plugin = await getBgGeoPlugin();
+  if (!plugin) return;
+  try {
+    await plugin.openSettings();
+  } catch {
+    /* ignore — user can grant it manually later */
+  }
+}
+
+/**
+ * Returns true if the OS has reported that background location is NOT
+ * authorized for the currently-active watcher. The UI layer reads this to
+ * know whether to show the rationale dialog.
+ */
+export function isBackgroundPermissionDenied(): boolean {
+  return backgroundPermissionDenied;
+}
+
 /**
  * Starts background pings for the given user. Native: uses Capacitor
  * background-geolocation (works with screen off / app backgrounded).
  * Web fallback: setInterval — only fires while the tab is alive.
+ *
+ * Two-stage permission flow on Android 11+:
+ *   STAGE 1: This function calls addWatcher({ requestPermissions: true })
+ *            which triggers the FOREGROUND prompt (fine + coarse location).
+ *   STAGE 2: When the OS reports a background-denied error, we set the
+ *            `backgroundPermissionDenied` flag and invoke the optional
+ *            `onNeedsBackgroundUpgrade` callback. The UI layer should then
+ *            show its custom Rationale dialog.
+ *   STAGE 3: After the user clicks "Agree" on the rationale dialog, the UI
+ *            calls `requestBackgroundLocationUpgrade()` to deep-link them
+ *            into system settings to pick "Allow all the time".
  */
-export async function startBackgroundTracking(userId: string) {
+export async function startBackgroundTracking(
+  userId: string,
+  opts?: { onNeedsBackgroundUpgrade?: () => void },
+) {
   if (activeUserId === userId) return;
   await stopBackgroundTracking();
   activeUserId = userId;
+  backgroundPermissionDenied = false;
 
   if (isNativeApp()) {
-    try {
-      const { registerPlugin } = await import('@capacitor/core');
-      const BackgroundGeolocation = registerPlugin<{
-        addWatcher(
-          options: {
-            backgroundMessage?: string;
-            backgroundTitle?: string;
-            requestPermissions?: boolean;
-            stale?: boolean;
-            distanceFilter?: number;
+    const BackgroundGeolocation = await getBgGeoPlugin();
+    if (BackgroundGeolocation) {
+      try {
+        let upgradeCallbackFired = false;
+        nativeWatcherId = await BackgroundGeolocation.addWatcher(
+          {
+            backgroundMessage:
+              'FieldForce is tracking your route while you are punched in.',
+            backgroundTitle: 'Field Tracking active',
+            // STAGE 1: triggers the FOREGROUND fine+coarse prompt.
+            requestPermissions: true,
+            stale: false,
+            // distanceFilter is meters; we keep low so the OS hands us updates,
+            // and we throttle the actual DB writes to 5-min intervals below.
+            distanceFilter: 10,
           },
-          callback: (
-            position?: { latitude: number; longitude: number; accuracy: number | null },
-            error?: { code?: string; message: string },
-          ) => void,
-        ): Promise<string>;
-        removeWatcher(options: { id: string }): Promise<void>;
-        openSettings(): Promise<void>;
-      }>('BackgroundGeolocation');
-
-      // Two-step Android 11+ permission flow:
-      //  1. First addWatcher call → triggers FOREGROUND ("While using the app") prompt.
-      //  2. If the OS reports NOT_AUTHORIZED for background, we deep-link the user to
-      //     the app's Location settings so they can pick "Allow all the time".
-      // ACCESS_BACKGROUND_LOCATION must be declared in AndroidManifest.xml for the
-      // "Allow all the time" option to appear at all.
-      let backgroundPromptShown = false;
-      nativeWatcherId = await BackgroundGeolocation.addWatcher(
-        {
-          backgroundMessage: 'FieldForce is tracking your route while you are punched in.',
-          backgroundTitle: 'Field Tracking active',
-          requestPermissions: true,
-          stale: false,
-          // distanceFilter is meters; we keep low so the OS hands us updates,
-          // and we throttle the actual DB writes to 5-min intervals below.
-          distanceFilter: 10,
-        },
-        async (location, error) => {
-          if (error) {
-            // On Android 11+, foreground may be granted but background still denied.
-            // Send the user to system settings ONCE to upgrade to "Allow all the time".
-            if (
-              !backgroundPromptShown &&
-              (error.code === 'NOT_AUTHORIZED' || /background/i.test(error.message || ''))
-            ) {
-              backgroundPromptShown = true;
-              try {
-                await BackgroundGeolocation.openSettings();
-              } catch {
-                /* ignore — user can grant it manually later */
+          async (location, error) => {
+            if (error) {
+              // STAGE 2: foreground granted, but background denied.
+              // Flag it and tell the UI layer to show its rationale dialog.
+              if (
+                error.code === 'NOT_AUTHORIZED' ||
+                /background/i.test(error.message || '')
+              ) {
+                backgroundPermissionDenied = true;
+                if (!upgradeCallbackFired && opts?.onNeedsBackgroundUpgrade) {
+                  upgradeCallbackFired = true;
+                  try {
+                    opts.onNeedsBackgroundUpgrade();
+                  } catch {
+                    /* ignore UI errors */
+                  }
+                }
               }
+              return;
             }
-            return;
-          }
-          if (!location || !activeUserId) return;
-          // Throttle writes: only persist if >= 5 min since last write.
-          const now = Date.now();
-          const last = (window as unknown as { __lastBgPingTs?: number }).__lastBgPingTs ?? 0;
-          if (now - last < PING_INTERVAL_MS - 5000) return;
-          (window as unknown as { __lastBgPingTs?: number }).__lastBgPingTs = now;
-          await logPing(activeUserId, location.latitude, location.longitude, location.accuracy ?? null);
-        },
-      );
-      return;
-    } catch (e) {
-      console.warn('Native background tracker failed, falling back to web interval', e);
+            if (!location || !activeUserId) return;
+            // Throttle writes: only persist if >= 5 min since last write.
+            const now = Date.now();
+            const last =
+              (window as unknown as { __lastBgPingTs?: number }).__lastBgPingTs ?? 0;
+            if (now - last < PING_INTERVAL_MS - 5000) return;
+            (window as unknown as { __lastBgPingTs?: number }).__lastBgPingTs = now;
+            await logPing(
+              activeUserId,
+              location.latitude,
+              location.longitude,
+              location.accuracy ?? null,
+            );
+          },
+        );
+        return;
+      } catch (e) {
+        console.warn('Native background tracker failed, falling back to web interval', e);
+      }
     }
   }
 
@@ -193,6 +261,7 @@ export async function startBackgroundTracking(userId: string) {
 export async function stopBackgroundTracking() {
   activeUserId = null;
   lastWebPingTs = 0;
+  backgroundPermissionDenied = false;
   if (webIntervalId) {
     clearInterval(webIntervalId);
     webIntervalId = null;
@@ -208,14 +277,13 @@ export async function stopBackgroundTracking() {
   }
   await releaseWakeLock();
   if (nativeWatcherId) {
-    try {
-      const { registerPlugin } = await import('@capacitor/core');
-      const BackgroundGeolocation = registerPlugin<{
-        removeWatcher(options: { id: string }): Promise<void>;
-      }>('BackgroundGeolocation');
-      await BackgroundGeolocation.removeWatcher({ id: nativeWatcherId });
-    } catch {
-      /* ignore */
+    const BackgroundGeolocation = await getBgGeoPlugin();
+    if (BackgroundGeolocation) {
+      try {
+        await BackgroundGeolocation.removeWatcher({ id: nativeWatcherId });
+      } catch {
+        /* ignore */
+      }
     }
     nativeWatcherId = null;
   }
