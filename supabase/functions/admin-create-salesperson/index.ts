@@ -66,6 +66,16 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Trial lockdown: this trial Lead account cannot create new salespeople.
+    const TRIAL_LOCKED_LEAD_EMAILS = ["lead.test@test.com"];
+    const callerEmail = (userData.user.email ?? "").toLowerCase();
+    if (!isAdmin && TRIAL_LOCKED_LEAD_EMAILS.includes(callerEmail)) {
+      return new Response(
+        JSON.stringify({ error: "Creating salespeople is disabled on this trial account." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const body = (await req.json()) as CreatePayload;
     const { email, password, full_name, team_id } = body ?? ({} as CreatePayload);
 
