@@ -1,7 +1,8 @@
 // Compress an image file to approximately the target size (KB) using
 // progressive quality + dimension downscaling. Returns a JPEG Blob/File.
-const TARGET_KB = 500;
-const MAX_DIM = 1920;
+// Aim for ~200 KB per upload (range 100–250 KB) to keep storage + bandwidth low.
+const TARGET_KB = 200;
+const MAX_DIM = 1600;
 
 export async function compressImage(
   file: File,
