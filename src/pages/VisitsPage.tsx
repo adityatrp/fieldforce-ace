@@ -15,7 +15,7 @@ import SignedImage from '@/components/SignedImage';
 import { compressImage } from '@/lib/imageCompress';
 import CameraCapture from '@/components/CameraCapture';
 import { readBattery } from '@/lib/battery';
-import { startBackgroundTracking, stopBackgroundTracking } from '@/lib/backgroundTracker';
+import { startBackgroundTracking, stopBackgroundTracking, requestBackgroundLocationUpgrade } from '@/lib/backgroundTracker';
 import { upsertTodaySummary } from '@/lib/dailySummary';
 import { workdayBounds } from '@/lib/workday';
 
@@ -161,6 +161,10 @@ const VisitsPage: React.FC = () => {
   const [dayStarted, setDayStarted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [punchingIn, setPunchingIn] = useState(false);
+  // Stage-2 rationale dialog: shown ONLY after the OS reports background
+  // location is denied (foreground was already granted in stage 1). Clicking
+  // "Agree" deep-links into system settings to enable "Allow all the time".
+  const [bgPermissionDialog, setBgPermissionDialog] = useState(false);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ['visits', user?.id],
@@ -296,7 +300,9 @@ const VisitsPage: React.FC = () => {
         });
       }
       // Resume background tracker if app was reloaded mid-day.
-      if (user) startBackgroundTracking(user.id);
+      if (user) startBackgroundTracking(user.id, {
+        onNeedsBackgroundUpgrade: () => setBgPermissionDialog(true),
+      });
     }
   }, [todayPunch, user]);
 
@@ -338,7 +344,12 @@ const VisitsPage: React.FC = () => {
       });
       queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
       // Kick off the 5-min background tracker (native: works with screen off).
-      startBackgroundTracking(user!.id);
+      // Stage 1 of the permission flow happens inside startBackgroundTracking
+      // (foreground prompt). If the OS later flags background as denied, the
+      // callback opens our custom rationale dialog (stage 2).
+      startBackgroundTracking(user!.id, {
+        onNeedsBackgroundUpgrade: () => setBgPermissionDialog(true),
+      });
       toast({
         title: '🚀 Punched In!',
         description: `Tracking started (±${Math.round(loc.accuracy)}m). You can punch out at end of day.`,
