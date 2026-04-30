@@ -93,7 +93,16 @@ export async function startBackgroundTracking(userId: string) {
           ) => void,
         ): Promise<string>;
         removeWatcher(options: { id: string }): Promise<void>;
+        openSettings(): Promise<void>;
       }>('BackgroundGeolocation');
+
+      // Two-step Android 11+ permission flow:
+      //  1. First addWatcher call → triggers FOREGROUND ("While using the app") prompt.
+      //  2. If the OS reports NOT_AUTHORIZED for background, we deep-link the user to
+      //     the app's Location settings so they can pick "Allow all the time".
+      // ACCESS_BACKGROUND_LOCATION must be declared in AndroidManifest.xml for the
+      // "Allow all the time" option to appear at all.
+      let backgroundPromptShown = false;
       nativeWatcherId = await BackgroundGeolocation.addWatcher(
         {
           backgroundMessage: 'FieldForce is tracking your route while you are punched in.',
@@ -105,7 +114,22 @@ export async function startBackgroundTracking(userId: string) {
           distanceFilter: 10,
         },
         async (location, error) => {
-          if (error) return;
+          if (error) {
+            // On Android 11+, foreground may be granted but background still denied.
+            // Send the user to system settings ONCE to upgrade to "Allow all the time".
+            if (
+              !backgroundPromptShown &&
+              (error.code === 'NOT_AUTHORIZED' || /background/i.test(error.message || ''))
+            ) {
+              backgroundPromptShown = true;
+              try {
+                await BackgroundGeolocation.openSettings();
+              } catch {
+                /* ignore — user can grant it manually later */
+              }
+            }
+            return;
+          }
           if (!location || !activeUserId) return;
           // Throttle writes: only persist if >= 5 min since last write.
           const now = Date.now();
