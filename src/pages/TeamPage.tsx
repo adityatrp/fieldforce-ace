@@ -16,7 +16,13 @@ import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus
 import SignedImage from '@/components/SignedImage';
 
 const TeamPage: React.FC = () => {
-  const { user, role } = useAuth();
+  const { user, role, profile } = useAuth();
+  // Trial lockdown: this trial Lead account cannot create new salespeople.
+  const TRIAL_LEAD_EMAILS = ['lead.test@test.com'];
+  const isTrialLockedLead = role === 'team_lead' && (
+    TRIAL_LEAD_EMAILS.includes((profile?.email || '').toLowerCase()) ||
+    TRIAL_LEAD_EMAILS.includes((user?.email || '').toLowerCase())
+  );
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -1327,10 +1333,15 @@ const TeamPage: React.FC = () => {
 
         <TabsContent value="members">
           <div className="flex justify-end gap-2 mb-4 flex-wrap">
-            {(role === 'team_lead' || role === 'admin') && (
+            {(role === 'team_lead' || role === 'admin') && !isTrialLockedLead && (
               <Button variant="outline" onClick={() => setCreateUserOpen(true)} className="gap-2">
                 <UserPlus className="h-4 w-4" /> Create Salesperson
               </Button>
+            )}
+            {isTrialLockedLead && (
+              <div className="text-xs text-muted-foreground italic px-2 py-2">
+                Creating new salespeople is disabled on this trial account.
+              </div>
             )}
             {role === 'admin' && (
               <>
