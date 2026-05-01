@@ -177,6 +177,21 @@ const VisitsPage: React.FC = () => {
     enabled: !!user,
   });
 
+  // Shop assignments → drives the salesperson's recurring period-based visit list.
+  const { data: myAssignments = [] } = useQuery({
+    queryKey: ['my-shop-assignments', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from('shop_assignments')
+        .select('id, shop_id, visits_per_month, assigned_to, shops(id, name, address, latitude, longitude)')
+        .eq('assigned_to', user.id)
+        .eq('active', true);
+      return data || [];
+    },
+    enabled: !!user && role === 'salesperson',
+  });
+
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: async () => {
