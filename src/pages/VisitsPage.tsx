@@ -227,10 +227,62 @@ const VisitsPage: React.FC = () => {
     return products.filter(p => p.name.toLowerCase().includes(q));
   }, [products, productSearch]);
 
+  // Salesperson sees synthetic "pending" cards generated from shop assignments
+  // for the current period. Already-completed periods become "completed" rows.
+  const periodPending = useMemo(() => {
+    if (role !== 'salesperson') return [];
+    const today = new Date();
+    return myAssignments.flatMap((a: any) => {
+      const shop = a.shops;
+      if (!shop) return [];
+      const p = currentPeriod(today, a.visits_per_month);
+      // Has the salesperson already checked in this period?
+      const existing = visits.find((v: any) =>
+        v.shop_id === shop.id &&
+        v.assignment_id === a.id &&
+        v.period_start === isoDate(p.start)
+      );
+      if (existing) return []; // current period already done — appears under completed
+      // Synthetic visit-shaped object for this assignment + period
+      return [{
+        id: `shop:${shop.id}:${p.index}:${isoDate(p.start)}`,
+        synthetic: true,
+        shop_id: shop.id,
+        assignment_id: a.id,
+        visit_status: 'assigned',
+        customer_name: shop.name,
+        location_name: shop.address,
+        target_latitude: shop.latitude,
+        target_longitude: shop.longitude,
+        latitude: null,
+        longitude: null,
+        photo_url: '',
+        notes: '',
+        order_received: false,
+        assigned_to: user!.id,
+        created_at: new Date().toISOString(),
+        checked_in_at: new Date().toISOString(),
+        checked_out_at: null,
+        period_index: p.index,
+        period_start: isoDate(p.start),
+        period_end: isoDate(p.end),
+        period_label: periodLabel(p),
+        visits_per_month: a.visits_per_month,
+      }];
+    });
+  }, [role, myAssignments, visits, user]);
+
   // Separate pending and completed visits, with overdue-first then optimized order
   const pendingVisits = useMemo(() => {
     const now = Date.now();
-    // Active pending: assigned + has coords + scheduled_at <= now (or no schedule)
+    if (role === 'salesperson') {
+      // Period-based items only — no due_date, no schedule.
+      const items = periodPending.filter((v: any) => v.target_latitude && v.target_longitude);
+      const optimized = currentLocation && dayStarted
+        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, items)
+        : items;
+      return optimized;
+    }
     const pending = visits.filter((v: any) =>
       v.visit_status === 'assigned' &&
       v.target_latitude && v.target_longitude &&
@@ -243,17 +295,18 @@ const VisitsPage: React.FC = () => {
       ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, others)
       : others;
     return [...sortedOverdue, ...optimized];
-  }, [visits, currentLocation, dayStarted]);
+  }, [visits, currentLocation, dayStarted, role, periodPending]);
 
-  // Future scheduled visits (not yet active)
+  // Future scheduled visits (legacy only)
   const upcomingVisits = useMemo(() => {
+    if (role === 'salesperson') return [];
     const now = Date.now();
     return visits.filter((v: any) =>
       v.visit_status === 'assigned' &&
       v.scheduled_at &&
       new Date(v.scheduled_at).getTime() > now
     ).sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
-  }, [visits]);
+  }, [visits, role]);
 
   const completedVisits = useMemo(() => {
     return visits.filter(v => v.visit_status !== 'assigned');
