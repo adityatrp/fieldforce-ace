@@ -24,7 +24,8 @@ Updated: just now
 - [Target Management](mem://features/target-management) — Monthly + weekly + daily targets, multi-period support, Dashboard cards per period
 - [Order Approval](mem://features/order-approval) — TL/Admin approve visit orders via Team page Approvals tab; Dashboard splits approved vs pending sales
 - [Tracking Performance](mem://architecture/tracking-performance) — Scoped queries, filtered realtime, debounced invalidations on /tracking
-- [Visit Assignment](mem://features/visit-assignment) — Assignment dictionary search, reassignment, and geocoding
+- [Visit Assignment](mem://features/visit-assignment) — LEGACY manual assignment (removed) — superseded by Shop Assignment
+- [Shop Assignment](mem://features/shop-assignment) — Lead uploads shops Excel; auto-geocoded; assigned to salesperson with monthly visit frequency; salesperson sees current period's due shops
 - [Visit Check-in Logic](mem://features/visit-check-in) — No accuracy gate, refreshable GPS, location_logs on every check-in
 - [Attendance & Tracking](mem://features/attendance-tracking) — Daily punch in/out, location_logs, /tracking page for Admin & Lead
 - [Design Aesthetic](mem://style/aesthetic) — Enterprise SaaS native mobile feel, styling rules, and typography

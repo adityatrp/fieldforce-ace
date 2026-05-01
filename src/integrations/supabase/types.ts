@@ -364,6 +364,90 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_assignments: {
+        Row: {
+          active: boolean
+          assigned_by: string
+          assigned_to: string
+          created_at: string
+          id: string
+          shop_id: string
+          updated_at: string
+          visits_per_month: number
+        }
+        Insert: {
+          active?: boolean
+          assigned_by: string
+          assigned_to: string
+          created_at?: string
+          id?: string
+          shop_id: string
+          updated_at?: string
+          visits_per_month: number
+        }
+        Update: {
+          active?: boolean
+          assigned_by?: string
+          assigned_to?: string
+          created_at?: string
+          id?: string
+          shop_id?: string
+          updated_at?: string
+          visits_per_month?: number
+        }
+        Relationships: []
+      }
+      shops: {
+        Row: {
+          active: boolean
+          address: string
+          contact_person: string
+          created_at: string
+          created_by: string
+          geocode_error: string
+          geocode_status: string
+          id: string
+          latitude: number | null
+          longitude: number | null
+          name: string
+          phone: string
+          team_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          address: string
+          contact_person?: string
+          created_at?: string
+          created_by: string
+          geocode_error?: string
+          geocode_status?: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          phone?: string
+          team_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          address?: string
+          contact_person?: string
+          created_at?: string
+          created_by?: string
+          geocode_error?: string
+          geocode_status?: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          phone?: string
+          team_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       targets: {
         Row: {
           achieved_value: number
@@ -535,6 +619,7 @@ export type Database = {
         Row: {
           assigned_by: string | null
           assigned_to: string | null
+          assignment_id: string | null
           auto_failed: boolean
           checked_in_at: string
           checked_out_at: string | null
@@ -551,9 +636,13 @@ export type Database = {
           order_approved_by: string | null
           order_notes: string | null
           order_received: boolean | null
+          period_end: string | null
+          period_index: number | null
+          period_start: string | null
           photo_url: string | null
           reassigned_to_visit_id: string | null
           scheduled_at: string | null
+          shop_id: string | null
           target_latitude: number | null
           target_longitude: number | null
           updated_at: string
@@ -563,6 +652,7 @@ export type Database = {
         Insert: {
           assigned_by?: string | null
           assigned_to?: string | null
+          assignment_id?: string | null
           auto_failed?: boolean
           checked_in_at?: string
           checked_out_at?: string | null
@@ -579,9 +669,13 @@ export type Database = {
           order_approved_by?: string | null
           order_notes?: string | null
           order_received?: boolean | null
+          period_end?: string | null
+          period_index?: number | null
+          period_start?: string | null
           photo_url?: string | null
           reassigned_to_visit_id?: string | null
           scheduled_at?: string | null
+          shop_id?: string | null
           target_latitude?: number | null
           target_longitude?: number | null
           updated_at?: string
@@ -591,6 +685,7 @@ export type Database = {
         Update: {
           assigned_by?: string | null
           assigned_to?: string | null
+          assignment_id?: string | null
           auto_failed?: boolean
           checked_in_at?: string
           checked_out_at?: string | null
@@ -607,9 +702,13 @@ export type Database = {
           order_approved_by?: string | null
           order_notes?: string | null
           order_received?: boolean | null
+          period_end?: string | null
+          period_index?: number | null
+          period_start?: string | null
           photo_url?: string | null
           reassigned_to_visit_id?: string | null
           scheduled_at?: string | null
+          shop_id?: string | null
           target_latitude?: number | null
           target_longitude?: number | null
           updated_at?: string

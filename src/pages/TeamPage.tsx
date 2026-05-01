@@ -12,8 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft, Target, Bell, CheckCircle2, XCircle, ClipboardCheck, KeyRound, Copy } from 'lucide-react';
+import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft, Target, Bell, CheckCircle2, XCircle, ClipboardCheck, KeyRound, Copy, Store, AlertTriangle } from 'lucide-react';
 import SignedImage from '@/components/SignedImage';
+import ShopsManager from '@/components/ShopsManager';
+import PerformanceView from '@/components/PerformanceView';
+import { monthPeriods, isoDate } from '@/lib/visitPeriods';
 
 const TeamPage: React.FC = () => {
   const { user, role, profile } = useAuth();
@@ -778,17 +781,7 @@ const TeamPage: React.FC = () => {
               <Target className="h-4 w-4" /> Set Team Target
             </Button>
           )}
-          <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button size="lg" className="h-12 px-6 text-base gap-2">
-                <Plus className="h-5 w-5" /> Assign Visit
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Assign Visit to Salesperson</DialogTitle></DialogHeader>
-              {renderVisitForm(false)}
-            </DialogContent>
-          </Dialog>
+          {/* Manual visit assignment removed — visits are auto-generated from shop assignments. See the Shops tab. */}
         </div>
       </div>
 
@@ -1148,7 +1141,7 @@ const TeamPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <Tabs defaultValue={pendingApprovalVisits.length > 0 ? 'approvals' : 'visits'} className="space-y-4">
+      <Tabs defaultValue={pendingApprovalVisits.length > 0 ? 'approvals' : 'shops'} className="space-y-4">
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="approvals" className="gap-1.5">
             Approvals
@@ -1158,11 +1151,24 @@ const TeamPage: React.FC = () => {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="shops" className="gap-1.5"><Store className="h-3.5 w-3.5" /> Shops</TabsTrigger>
+          <TabsTrigger value="performance" className="gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Performance</TabsTrigger>
           <TabsTrigger value="visits">Visits</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           {role === 'admin' && <TabsTrigger value="teams">Teams</TabsTrigger>}
         </TabsList>
+
+        <TabsContent value="shops">
+          <ShopsManager
+            teamId={myTeamId}
+            salespersons={salespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))}
+          />
+        </TabsContent>
+
+        <TabsContent value="performance">
+          <PerformanceView teamId={myTeamId} salespersons={salespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))} />
+        </TabsContent>
 
         <TabsContent value="approvals" className="space-y-3">
           {pendingApprovalVisits.length === 0 ? (

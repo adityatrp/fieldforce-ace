@@ -18,6 +18,7 @@ import { readBattery } from '@/lib/battery';
 import { startBackgroundTracking, stopBackgroundTracking, requestBackgroundLocationUpgrade } from '@/lib/backgroundTracker';
 import { upsertTodaySummary } from '@/lib/dailySummary';
 import { workdayBounds } from '@/lib/workday';
+import { currentPeriod, isoDate, periodLabel } from '@/lib/visitPeriods';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -176,6 +177,21 @@ const VisitsPage: React.FC = () => {
     enabled: !!user,
   });
 
+  // Shop assignments → drives the salesperson's recurring period-based visit list.
+  const { data: myAssignments = [] } = useQuery({
+    queryKey: ['my-shop-assignments', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from('shop_assignments')
+        .select('id, shop_id, visits_per_month, assigned_to, shops(id, name, address, latitude, longitude)')
+        .eq('assigned_to', user.id)
+        .eq('active', true);
+      return data || [];
+    },
+    enabled: !!user && role === 'salesperson',
+  });
+
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: async () => {
@@ -211,10 +227,62 @@ const VisitsPage: React.FC = () => {
     return products.filter(p => p.name.toLowerCase().includes(q));
   }, [products, productSearch]);
 
+  // Salesperson sees synthetic "pending" cards generated from shop assignments
+  // for the current period. Already-completed periods become "completed" rows.
+  const periodPending = useMemo(() => {
+    if (role !== 'salesperson') return [];
+    const today = new Date();
+    return myAssignments.flatMap((a: any) => {
+      const shop = a.shops;
+      if (!shop) return [];
+      const p = currentPeriod(today, a.visits_per_month);
+      // Has the salesperson already checked in this period?
+      const existing = visits.find((v: any) =>
+        v.shop_id === shop.id &&
+        v.assignment_id === a.id &&
+        v.period_start === isoDate(p.start)
+      );
+      if (existing) return []; // current period already done — appears under completed
+      // Synthetic visit-shaped object for this assignment + period
+      return [{
+        id: `shop:${shop.id}:${p.index}:${isoDate(p.start)}`,
+        synthetic: true,
+        shop_id: shop.id,
+        assignment_id: a.id,
+        visit_status: 'assigned',
+        customer_name: shop.name,
+        location_name: shop.address,
+        target_latitude: shop.latitude,
+        target_longitude: shop.longitude,
+        latitude: null,
+        longitude: null,
+        photo_url: '',
+        notes: '',
+        order_received: false,
+        assigned_to: user!.id,
+        created_at: new Date().toISOString(),
+        checked_in_at: new Date().toISOString(),
+        checked_out_at: null,
+        period_index: p.index,
+        period_start: isoDate(p.start),
+        period_end: isoDate(p.end),
+        period_label: periodLabel(p),
+        visits_per_month: a.visits_per_month,
+      }];
+    });
+  }, [role, myAssignments, visits, user]);
+
   // Separate pending and completed visits, with overdue-first then optimized order
   const pendingVisits = useMemo(() => {
     const now = Date.now();
-    // Active pending: assigned + has coords + scheduled_at <= now (or no schedule)
+    if (role === 'salesperson') {
+      // Period-based items only — no due_date, no schedule.
+      const items = periodPending.filter((v: any) => v.target_latitude && v.target_longitude);
+      const optimized = currentLocation && dayStarted
+        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, items)
+        : items;
+      return optimized;
+    }
     const pending = visits.filter((v: any) =>
       v.visit_status === 'assigned' &&
       v.target_latitude && v.target_longitude &&
@@ -227,17 +295,18 @@ const VisitsPage: React.FC = () => {
       ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, others)
       : others;
     return [...sortedOverdue, ...optimized];
-  }, [visits, currentLocation, dayStarted]);
+  }, [visits, currentLocation, dayStarted, role, periodPending]);
 
-  // Future scheduled visits (not yet active)
+  // Future scheduled visits (legacy only)
   const upcomingVisits = useMemo(() => {
+    if (role === 'salesperson') return [];
     const now = Date.now();
     return visits.filter((v: any) =>
       v.visit_status === 'assigned' &&
       v.scheduled_at &&
       new Date(v.scheduled_at).getTime() > now
     ).sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
-  }, [visits]);
+  }, [visits, role]);
 
   const completedVisits = useMemo(() => {
     return visits.filter(v => v.visit_status !== 'assigned');
@@ -444,7 +513,11 @@ const VisitsPage: React.FC = () => {
       }
       if (!coords) throw new Error('GPS location required');
 
-      const visit = visits.find(v => v.id === visitId);
+      // Synthetic id from a shop-assignment period? Then INSERT a new visit row.
+      const isSynthetic = visitId.startsWith('shop:');
+      const visit = isSynthetic
+        ? periodPending.find((v: any) => v.id === visitId)
+        : visits.find(v => v.id === visitId);
       if (!visit) throw new Error('Visit not found');
 
       let photoUrl = '';
@@ -455,42 +528,66 @@ const VisitsPage: React.FC = () => {
         if (uploadError) {
           throw new Error(`Could not upload visit photo: ${uploadError.message}`);
         }
-        // Store the storage path; viewers resolve to short-lived signed URLs.
         photoUrl = path;
       }
 
       const distance = getDistanceMeters(
         coords.lat, coords.lng,
-        visit.target_latitude!, visit.target_longitude!
+        (visit as any).target_latitude!, (visit as any).target_longitude!
       );
 
       const isVerified = distance <= GPS_THRESHOLD_METERS;
       const now = new Date().toISOString();
-      // Use the moment the salesperson opened the check-in dialog as the
-      // visit start time. The gap from open → submit (time spent with the
-      // customer / capturing photo / order) becomes part of the active visit
-      // window and is therefore subtracted from idle time in the daily summary.
       const startedAt = checkInOpenedAtRef.current || now;
       const finalDiscount = orderReceived && orderItems.length > 0 ? discountPercent : 0;
 
-      const { error } = await supabase.from('visits').update({
-        checked_in_at: startedAt,
-        checked_out_at: now,
-        latitude: coords.lat,
-        longitude: coords.lng,
-        photo_url: photoUrl || undefined,
-        notes,
-        visit_status: isVerified ? 'verified' : 'failed',
-        order_received: orderReceived && orderItems.length > 0,
-        order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
-      }).eq('id', visitId);
-
-      if (error) throw error;
+      let actualVisitId = visitId;
+      if (isSynthetic) {
+        const v: any = visit;
+        const { data: inserted, error: insErr } = await supabase.from('visits').insert({
+          customer_name: v.customer_name,
+          location_name: v.location_name,
+          target_latitude: v.target_latitude,
+          target_longitude: v.target_longitude,
+          assigned_to: user!.id,
+          assigned_by: user!.id,
+          checked_in_at: startedAt,
+          checked_out_at: now,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          photo_url: photoUrl || undefined,
+          notes,
+          visit_status: isVerified ? 'verified' : 'failed',
+          order_received: orderReceived && orderItems.length > 0,
+          order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
+          shop_id: v.shop_id,
+          assignment_id: v.assignment_id,
+          period_index: v.period_index,
+          period_start: v.period_start,
+          period_end: v.period_end,
+          user_id: user!.id,
+        } as any).select('id').single();
+        if (insErr) throw insErr;
+        actualVisitId = inserted!.id;
+      } else {
+        const { error } = await supabase.from('visits').update({
+          checked_in_at: startedAt,
+          checked_out_at: now,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          photo_url: photoUrl || undefined,
+          notes,
+          visit_status: isVerified ? 'verified' : 'failed',
+          order_received: orderReceived && orderItems.length > 0,
+          order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
+        }).eq('id', visitId);
+        if (error) throw error;
+      }
 
       if (orderReceived && orderItems.length > 0) {
         const discountMultiplier = 1 - (finalDiscount / 100);
         const items = orderItems.map(oi => ({
-          visit_id: visitId,
+          visit_id: actualVisitId,
           product_id: oi.product_id,
           quantity: oi.quantity,
           price_at_order: Math.round(oi.price * discountMultiplier * 100) / 100,
@@ -503,7 +600,7 @@ const VisitsPage: React.FC = () => {
         const battery = await readBattery();
         await supabase.from('location_logs').insert({
           user_id: user!.id,
-          visit_id: visitId,
+          visit_id: actualVisitId,
           latitude: coords.lat,
           longitude: coords.lng,
           accuracy: coords.accuracy,
@@ -617,7 +714,7 @@ const VisitsPage: React.FC = () => {
     setDiscountPercent(0);
   };
 
-  const selectedVisit = visits.find(v => v.id === checkInDialog);
+  const selectedVisit = visits.find(v => v.id === checkInDialog) || periodPending.find((v: any) => v.id === checkInDialog);
   const viewVisit = visits.find(v => v.id === viewDialog);
 
   const totalVisits = visits.length;
