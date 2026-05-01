@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft, Target, Bell, CheckCircle2, XCircle, ClipboardCheck, KeyRound, Copy, Store, AlertTriangle } from 'lucide-react';
 import SignedImage from '@/components/SignedImage';
 import ShopsManager from '@/components/ShopsManager';
+import PerformanceView from '@/components/PerformanceView';
 import { monthPeriods, isoDate } from '@/lib/visitPeriods';
 
 const TeamPage: React.FC = () => {
