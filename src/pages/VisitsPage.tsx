@@ -600,7 +600,7 @@ const VisitsPage: React.FC = () => {
         const battery = await readBattery();
         await supabase.from('location_logs').insert({
           user_id: user!.id,
-          visit_id: visitId,
+          visit_id: actualVisitId,
           latitude: coords.lat,
           longitude: coords.lng,
           accuracy: coords.accuracy,
