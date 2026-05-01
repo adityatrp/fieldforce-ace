@@ -1140,7 +1140,7 @@ const TeamPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <Tabs defaultValue={pendingApprovalVisits.length > 0 ? 'approvals' : 'visits'} className="space-y-4">
+      <Tabs defaultValue={pendingApprovalVisits.length > 0 ? 'approvals' : 'shops'} className="space-y-4">
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="approvals" className="gap-1.5">
             Approvals
@@ -1150,11 +1150,24 @@ const TeamPage: React.FC = () => {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="shops" className="gap-1.5"><Store className="h-3.5 w-3.5" /> Shops</TabsTrigger>
+          <TabsTrigger value="performance" className="gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Performance</TabsTrigger>
           <TabsTrigger value="visits">Visits</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           {role === 'admin' && <TabsTrigger value="teams">Teams</TabsTrigger>}
         </TabsList>
+
+        <TabsContent value="shops">
+          <ShopsManager
+            teamId={myTeamId}
+            salespersons={salespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))}
+          />
+        </TabsContent>
+
+        <TabsContent value="performance">
+          <PerformanceView teamId={myTeamId} salespersons={salespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))} />
+        </TabsContent>
 
         <TabsContent value="approvals" className="space-y-3">
           {pendingApprovalVisits.length === 0 ? (
