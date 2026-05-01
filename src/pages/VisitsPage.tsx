@@ -714,7 +714,7 @@ const VisitsPage: React.FC = () => {
     setDiscountPercent(0);
   };
 
-  const selectedVisit = visits.find(v => v.id === checkInDialog);
+  const selectedVisit = visits.find(v => v.id === checkInDialog) || periodPending.find((v: any) => v.id === checkInDialog);
   const viewVisit = visits.find(v => v.id === viewDialog);
 
   const totalVisits = visits.length;
