@@ -513,7 +513,11 @@ const VisitsPage: React.FC = () => {
       }
       if (!coords) throw new Error('GPS location required');
 
-      const visit = visits.find(v => v.id === visitId);
+      // Synthetic id from a shop-assignment period? Then INSERT a new visit row.
+      const isSynthetic = visitId.startsWith('shop:');
+      const visit = isSynthetic
+        ? periodPending.find((v: any) => v.id === visitId)
+        : visits.find(v => v.id === visitId);
       if (!visit) throw new Error('Visit not found');
 
       let photoUrl = '';
@@ -524,42 +528,66 @@ const VisitsPage: React.FC = () => {
         if (uploadError) {
           throw new Error(`Could not upload visit photo: ${uploadError.message}`);
         }
-        // Store the storage path; viewers resolve to short-lived signed URLs.
         photoUrl = path;
       }
 
       const distance = getDistanceMeters(
         coords.lat, coords.lng,
-        visit.target_latitude!, visit.target_longitude!
+        (visit as any).target_latitude!, (visit as any).target_longitude!
       );
 
       const isVerified = distance <= GPS_THRESHOLD_METERS;
       const now = new Date().toISOString();
-      // Use the moment the salesperson opened the check-in dialog as the
-      // visit start time. The gap from open → submit (time spent with the
-      // customer / capturing photo / order) becomes part of the active visit
-      // window and is therefore subtracted from idle time in the daily summary.
       const startedAt = checkInOpenedAtRef.current || now;
       const finalDiscount = orderReceived && orderItems.length > 0 ? discountPercent : 0;
 
-      const { error } = await supabase.from('visits').update({
-        checked_in_at: startedAt,
-        checked_out_at: now,
-        latitude: coords.lat,
-        longitude: coords.lng,
-        photo_url: photoUrl || undefined,
-        notes,
-        visit_status: isVerified ? 'verified' : 'failed',
-        order_received: orderReceived && orderItems.length > 0,
-        order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
-      }).eq('id', visitId);
-
-      if (error) throw error;
+      let actualVisitId = visitId;
+      if (isSynthetic) {
+        const v: any = visit;
+        const { data: inserted, error: insErr } = await supabase.from('visits').insert({
+          customer_name: v.customer_name,
+          location_name: v.location_name,
+          target_latitude: v.target_latitude,
+          target_longitude: v.target_longitude,
+          assigned_to: user!.id,
+          assigned_by: user!.id,
+          checked_in_at: startedAt,
+          checked_out_at: now,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          photo_url: photoUrl || undefined,
+          notes,
+          visit_status: isVerified ? 'verified' : 'failed',
+          order_received: orderReceived && orderItems.length > 0,
+          order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
+          shop_id: v.shop_id,
+          assignment_id: v.assignment_id,
+          period_index: v.period_index,
+          period_start: v.period_start,
+          period_end: v.period_end,
+          user_id: user!.id,
+        } as any).select('id').single();
+        if (insErr) throw insErr;
+        actualVisitId = inserted!.id;
+      } else {
+        const { error } = await supabase.from('visits').update({
+          checked_in_at: startedAt,
+          checked_out_at: now,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          photo_url: photoUrl || undefined,
+          notes,
+          visit_status: isVerified ? 'verified' : 'failed',
+          order_received: orderReceived && orderItems.length > 0,
+          order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
+        }).eq('id', visitId);
+        if (error) throw error;
+      }
 
       if (orderReceived && orderItems.length > 0) {
         const discountMultiplier = 1 - (finalDiscount / 100);
         const items = orderItems.map(oi => ({
-          visit_id: visitId,
+          visit_id: actualVisitId,
           product_id: oi.product_id,
           quantity: oi.quantity,
           price_at_order: Math.round(oi.price * discountMultiplier * 100) / 100,
