@@ -12,8 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft, Target, Bell, CheckCircle2, XCircle, ClipboardCheck, KeyRound, Copy } from 'lucide-react';
+import { Users, MapPin, Plus, Navigation, Search, Pencil, Eye, Package, UserPlus, Trash2, ShieldCheck, ArrowRightLeft, Target, Bell, CheckCircle2, XCircle, ClipboardCheck, KeyRound, Copy, Store, AlertTriangle } from 'lucide-react';
 import SignedImage from '@/components/SignedImage';
+import ShopsManager from '@/components/ShopsManager';
+import { monthPeriods, isoDate } from '@/lib/visitPeriods';
 
 const TeamPage: React.FC = () => {
   const { user, role, profile } = useAuth();
@@ -778,17 +780,7 @@ const TeamPage: React.FC = () => {
               <Target className="h-4 w-4" /> Set Team Target
             </Button>
           )}
-          <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button size="lg" className="h-12 px-6 text-base gap-2">
-                <Plus className="h-5 w-5" /> Assign Visit
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Assign Visit to Salesperson</DialogTitle></DialogHeader>
-              {renderVisitForm(false)}
-            </DialogContent>
-          </Dialog>
+          {/* Manual visit assignment removed — visits are auto-generated from shop assignments. See the Shops tab. */}
         </div>
       </div>
 
