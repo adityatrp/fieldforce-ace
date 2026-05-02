@@ -24,7 +24,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     ...(role === 'admin' || role === 'team_lead'
       ? [{ to: '/team', icon: Users, label: 'Team' }]
       : []),
-    ...(role === 'admin'
+    ...(role === 'admin' || role === 'team_lead'
       ? [{ to: '/reports', icon: FileText, label: 'Reports' }]
       : []),
   ];
