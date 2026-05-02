@@ -26,7 +26,7 @@ const ProtectedTeamPage = () => {
 
 const ProtectedReportsPage = () => {
   const { role } = useAuth();
-  if (role !== 'admin') return <Navigate to="/" replace />;
+  if (role !== 'admin' && role !== 'team_lead') return <Navigate to="/" replace />;
   return <ReportsPage />;
 };
 
