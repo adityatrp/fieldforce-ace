@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import FailedVisitNotifications from '@/components/FailedVisitNotifications';
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { profile, role, signOut } = useAuth();
@@ -161,6 +162,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <h2 className="font-semibold text-foreground text-[17px] tracking-tight truncate flex-1">
               {navItems.find(n => n.to === location.pathname)?.label || 'Dashboard'}
             </h2>
+            <FailedVisitNotifications />
           </div>
         </header>
 
