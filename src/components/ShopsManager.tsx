@@ -106,10 +106,30 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       if (!teamId) throw new Error('No team selected.');
+
+      // ---- File checks ----
+      const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+      const allowedExt = ['.xlsx', '.xls', '.csv'];
+      const lname = file.name.toLowerCase();
+      if (!allowedExt.some(ext => lname.endsWith(ext))) {
+        throw new Error('Unsupported file type. Use .xlsx, .xls or .csv');
+      }
+      if (file.size > MAX_SIZE) {
+        throw new Error(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`);
+      }
+      if (file.size === 0) throw new Error('File is empty.');
+
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
+      let wb: XLSX.WorkBook;
+      try {
+        wb = XLSX.read(buf, { type: 'array' });
+      } catch {
+        throw new Error('Could not read file. Make sure it is a valid Excel/CSV.');
+      }
+      if (!wb.SheetNames.length) throw new Error('Workbook has no sheets.');
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
+      if (rows.length > 2000) throw new Error('Too many rows (max 2000 per upload).');
 
       const normalize = (r: Record<string, any>) => {
         const lc: Record<string, any> = {};
@@ -125,43 +145,54 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
       const cleaned = rows.map(normalize).filter(r => r.name && r.address);
       if (cleaned.length === 0) throw new Error('No valid rows. Need columns: Shop Name, Address.');
 
+      // De-duplicate by name (case-insensitive) within the file
+      const seen = new Set<string>();
+      const unique = cleaned.filter(r => {
+        const k = r.name.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+
       // Wipe existing shops for this team
       await supabase.from('shops').update({ active: false }).eq('team_id', teamId);
 
-      setUploadProgress({ done: 0, total: cleaned.length });
+      setUploadProgress({ done: 0, total: unique.length });
 
-      let i = 0;
+      // Parallel batch geocode (Photon + Nominatim fallback, 6 concurrent)
+      const geos = await geocodeBatch(
+        unique.map(r => r.address),
+        (done, total) => setUploadProgress({ done, total })
+      );
+
+      const records = unique.map((r, i) => ({
+        team_id: teamId,
+        name: r.name,
+        address: r.address,
+        contact_person: r.contact_person,
+        phone: r.phone,
+        latitude: geos[i]?.lat ?? null,
+        longitude: geos[i]?.lng ?? null,
+        geocode_status: geos[i] ? 'ok' : 'failed',
+        geocode_error: geos[i] ? '' : 'No match found',
+        created_by: user!.id,
+      }));
+
       const errors: string[] = [];
-      for (const r of cleaned) {
-        i++;
-        try {
-          const geo = await geocodeAddress(r.address);
-          const { error } = await supabase.from('shops').insert({
-            team_id: teamId,
-            name: r.name,
-            address: r.address,
-            contact_person: r.contact_person,
-            phone: r.phone,
-            latitude: geo?.lat ?? null,
-            longitude: geo?.lng ?? null,
-            geocode_status: geo ? 'ok' : 'failed',
-            geocode_error: geo ? '' : 'No match found',
-            created_by: user!.id,
-          });
-          if (error) errors.push(`${r.name}: ${error.message}`);
-          await new Promise(r2 => setTimeout(r2, 1100));
-        } catch (e: any) {
-          errors.push(`${r.name}: ${e.message || 'unknown error'}`);
-        }
-        setUploadProgress({ done: i, total: cleaned.length });
+      for (let i = 0; i < records.length; i += 200) {
+        const chunk = records.slice(i, i + 200);
+        const { error } = await supabase.from('shops').insert(chunk);
+        if (error) errors.push(error.message);
       }
-      return { count: cleaned.length, errors };
+
+      const failed = geos.filter(g => !g).length;
+      return { count: unique.length, errors, failed };
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['shops'] });
       toast({
         title: 'Upload complete',
-        description: `${res.count} shop${res.count === 1 ? '' : 's'} processed.${res.errors.length ? ' ' + res.errors.length + ' error(s).' : ''}`,
+        description: `${res.count} shop${res.count === 1 ? '' : 's'} processed.${res.failed ? ` ${res.failed} address(es) couldn't be geocoded.` : ''}${res.errors.length ? ' ' + res.errors.length + ' insert error(s).' : ''}`,
       });
       setUploadOpen(false);
       setUploadProgress(null);
