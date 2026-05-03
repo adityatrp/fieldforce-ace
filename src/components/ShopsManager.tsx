@@ -383,7 +383,7 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Geocoding takes ~1 second per shop. Don't close this window.
+              Max 5 MB · up to 2000 rows. Geocoding runs in parallel — usually under a minute for 100 shops.
             </p>
           </div>
         </DialogContent>
