@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, Store, MapPin, RefreshCw, Loader2, AlertTriangle, FileSpreadsheet, UserCheck, Search } from 'lucide-react';
-import { geocodeAddress } from '@/lib/geocode';
+import { geocodeAddress, geocodeBatch } from '@/lib/geocode';
 
 type Shop = {
   id: string;
