@@ -277,11 +277,12 @@ const VisitsPage: React.FC = () => {
     const now = Date.now();
     if (role === 'salesperson') {
       // Period-based items only — no due_date, no schedule.
-      const items = periodPending.filter((v: any) => v.target_latitude && v.target_longitude);
+      const items = periodPending;
       const optimized = currentLocation && dayStarted
-        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, items)
+        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, items.filter((v: any) => v.target_latitude && v.target_longitude))
         : items;
-      return optimized;
+      const withoutCoords = items.filter((v: any) => !v.target_latitude || !v.target_longitude);
+      return currentLocation && dayStarted ? [...optimized, ...withoutCoords] : optimized;
     }
     const pending = visits.filter((v: any) =>
       v.visit_status === 'assigned' &&
@@ -717,10 +718,11 @@ const VisitsPage: React.FC = () => {
   const selectedVisit = visits.find(v => v.id === checkInDialog) || periodPending.find((v: any) => v.id === checkInDialog);
   const viewVisit = visits.find(v => v.id === viewDialog);
 
-  const totalVisits = visits.length;
+  const syntheticPendingCount = role === 'salesperson' ? periodPending.length : 0;
+  const totalVisits = visits.length + syntheticPendingCount;
   const verified = visits.filter(v => v.visit_status === 'verified').length;
   const failed = visits.filter(v => v.visit_status === 'failed').length;
-  const pending = visits.filter(v => v.visit_status === 'assigned').length;
+  const pending = visits.filter(v => v.visit_status === 'assigned').length + syntheticPendingCount;
 
   const renderVisitCard = (v: any) => {
     const config = statusConfig[v.visit_status] || statusConfig.assigned;
