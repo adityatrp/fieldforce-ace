@@ -1175,14 +1175,27 @@ const TeamPage: React.FC = () => {
         </TabsList>
 
         <TabsContent value="shops">
+          {role === 'admin' && (
+            <Card className="mb-3">
+              <CardContent className="p-3 space-y-2">
+                <Label className="text-[10px] uppercase text-muted-foreground">Team</Label>
+                <Select value={activeShopTeamId || ''} onValueChange={setSelectedShopTeamId}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select team" /></SelectTrigger>
+                  <SelectContent>
+                    {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
+          )}
           <ShopsManager
-            teamId={myTeamId}
-            salespersons={salespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))}
+            teamId={activeShopTeamId}
+            salespersons={shopSalespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))}
           />
         </TabsContent>
 
         <TabsContent value="performance">
-          <PerformanceView teamId={myTeamId} salespersons={salespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))} />
+          <PerformanceView teamId={activeShopTeamId} salespersons={shopSalespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))} />
         </TabsContent>
 
         <TabsContent value="approvals" className="space-y-3">
