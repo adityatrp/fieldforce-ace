@@ -729,6 +729,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      user_has_active_shop_assignment: {
+        Args: { _shop_id: string; _user_id: string }
+        Returns: boolean
+      }
+      user_is_team_lead_for_shop: {
+        Args: { _shop_id: string; _user_id: string }
+        Returns: boolean
+      }
+      user_is_team_lead_for_team: {
+        Args: { _team_id: string; _user_id: string }
+        Returns: boolean
+      }
       users_share_team: {
         Args: { _user_a: string; _user_b: string }
         Returns: boolean
