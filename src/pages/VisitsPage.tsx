@@ -177,7 +177,7 @@ const VisitsPage: React.FC = () => {
     enabled: !!user,
   });
 
-  // Shop assignments → drives the salesperson's recurring period-based visit list.
+  // Shop assignments → drives recurring period-based visit cards for salesperson and self-assigned Team Lead.
   const { data: myAssignments = [] } = useQuery({
     queryKey: ['my-shop-assignments', user?.id],
     queryFn: async () => {
@@ -189,7 +189,7 @@ const VisitsPage: React.FC = () => {
         .eq('active', true);
       return data || [];
     },
-    enabled: !!user && role === 'salesperson',
+    enabled: !!user && (role === 'salesperson' || role === 'team_lead'),
   });
 
   const { data: products = [] } = useQuery({
@@ -230,7 +230,7 @@ const VisitsPage: React.FC = () => {
   // Salesperson sees synthetic "pending" cards generated from shop assignments
   // for the current period. Already-completed periods become "completed" rows.
   const periodPending = useMemo(() => {
-    if (role !== 'salesperson') return [];
+    if (role !== 'salesperson' && role !== 'team_lead') return [];
     const today = new Date();
     return myAssignments.flatMap((a: any) => {
       const shop = a.shops;
@@ -277,11 +277,12 @@ const VisitsPage: React.FC = () => {
     const now = Date.now();
     if (role === 'salesperson') {
       // Period-based items only — no due_date, no schedule.
-      const items = periodPending.filter((v: any) => v.target_latitude && v.target_longitude);
+      const items = periodPending;
       const optimized = currentLocation && dayStarted
-        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, items)
+        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, items.filter((v: any) => v.target_latitude && v.target_longitude))
         : items;
-      return optimized;
+      const withoutCoords = items.filter((v: any) => !v.target_latitude || !v.target_longitude);
+      return currentLocation && dayStarted ? [...optimized, ...withoutCoords] : optimized;
     }
     const pending = visits.filter((v: any) =>
       v.visit_status === 'assigned' &&
@@ -294,7 +295,7 @@ const VisitsPage: React.FC = () => {
     const optimized = currentLocation && dayStarted
       ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, others)
       : others;
-    return [...sortedOverdue, ...optimized];
+    return role === 'team_lead' ? [...periodPending, ...sortedOverdue, ...optimized] : [...sortedOverdue, ...optimized];
   }, [visits, currentLocation, dayStarted, role, periodPending]);
 
   // Future scheduled visits (legacy only)
@@ -717,10 +718,11 @@ const VisitsPage: React.FC = () => {
   const selectedVisit = visits.find(v => v.id === checkInDialog) || periodPending.find((v: any) => v.id === checkInDialog);
   const viewVisit = visits.find(v => v.id === viewDialog);
 
-  const totalVisits = visits.length;
+  const syntheticPendingCount = (role === 'salesperson' || role === 'team_lead') ? periodPending.length : 0;
+  const totalVisits = visits.length + syntheticPendingCount;
   const verified = visits.filter(v => v.visit_status === 'verified').length;
   const failed = visits.filter(v => v.visit_status === 'failed').length;
-  const pending = visits.filter(v => v.visit_status === 'assigned').length;
+  const pending = visits.filter(v => v.visit_status === 'assigned').length + syntheticPendingCount;
 
   const renderVisitCard = (v: any) => {
     const config = statusConfig[v.visit_status] || statusConfig.assigned;
@@ -795,15 +797,22 @@ const VisitsPage: React.FC = () => {
           {/* Bottom: action buttons row */}
           {(() => {
             const showView = (v.visit_status === 'verified' || v.visit_status === 'failed');
-            const showMap = v.visit_status === 'assigned' && v.assigned_to === user?.id && v.target_latitude && v.target_longitude;
+            const hasTargetCoords = !!v.target_latitude && !!v.target_longitude;
+            const showMap = v.visit_status === 'assigned' && v.assigned_to === user?.id && hasTargetCoords;
             const showEditOrder = v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && ((v as any).order_approval_status || 'pending') !== 'approved';
-            const showCheckInSales = v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming;
-            const showCheckInLead = v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming;
+            const showCheckInSales = v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming && hasTargetCoords;
+            const showCheckInLead = v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming && hasTargetCoords;
             const showCheckOut = (v.visit_status === 'verified' || v.visit_status === 'checked_in') && !v.checked_out_at;
-            const hasAny = showView || showMap || showEditOrder || showCheckInSales || showCheckInLead || showCheckOut;
+            const showNoCoords = v.visit_status === 'assigned' && v.assigned_to === user?.id && !hasTargetCoords;
+            const hasAny = showView || showMap || showEditOrder || showCheckInSales || showCheckInLead || showCheckOut || showNoCoords;
             if (!hasAny) return null;
             return (
               <div className="flex gap-2 flex-wrap pt-1 border-t border-border/50">
+                {showNoCoords && (
+                  <div className="w-full text-xs text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
+                    Coordinates missing. Ask your Team Lead to refresh this shop before check-in.
+                  </div>
+                )}
                 {showView && (
                   <Button size="sm" variant="ghost" className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[90px]" onClick={() => setViewDialog(v.id)}>
                     <Eye className="h-3.5 w-3.5 mr-1" /> View
@@ -964,7 +973,7 @@ const VisitsPage: React.FC = () => {
 
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground text-sm">Loading visits...</div>
-      ) : visits.length === 0 ? (
+      ) : totalVisits === 0 ? (
         <Card className="rounded-2xl">
           <CardContent className="py-12 text-center">
             <MapPin className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />

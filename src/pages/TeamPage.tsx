@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -92,6 +92,7 @@ const TeamPage: React.FC = () => {
 
   // Search filters
   const [spSearch, setSpSearch] = useState('');
+  const [selectedShopTeamId, setSelectedShopTeamId] = useState('');
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['team-profiles'],
@@ -199,7 +200,14 @@ const TeamPage: React.FC = () => {
   // Team lead's team
   const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
   const myTeamId = myTeamMembership?.team_id;
+  const activeShopTeamId = role === 'admin' ? (selectedShopTeamId || teams[0]?.id) : myTeamId;
   const myTeamMemberIds = teamMembers.filter(tm => tm.team_id === myTeamId).map(tm => tm.user_id);
+
+  useEffect(() => {
+    if (role === 'admin' && !selectedShopTeamId && teams[0]?.id) {
+      setSelectedShopTeamId(teams[0].id);
+    }
+  }, [role, selectedShopTeamId, teams]);
 
   const salespersons = useMemo(() => {
     return profiles.filter(p => {
@@ -222,6 +230,13 @@ const TeamPage: React.FC = () => {
       (sp.email || '').toLowerCase().includes(q)
     );
   }, [salespersons, spSearch]);
+
+  const shopSalespersons = useMemo(() => {
+    if (role !== 'admin') return salespersons;
+    if (!activeShopTeamId) return [];
+    const activeTeamMemberIds = teamMembers.filter(tm => tm.team_id === activeShopTeamId).map(tm => tm.user_id);
+    return salespersons.filter(sp => activeTeamMemberIds.includes(sp.user_id));
+  }, [role, salespersons, teamMembers, activeShopTeamId]);
 
   const visibleMembers = useMemo(() => {
     if (role === 'admin') return profiles;
@@ -1160,14 +1175,27 @@ const TeamPage: React.FC = () => {
         </TabsList>
 
         <TabsContent value="shops">
+          {role === 'admin' && (
+            <Card className="mb-3">
+              <CardContent className="p-3 space-y-2">
+                <Label className="text-[10px] uppercase text-muted-foreground">Team</Label>
+                <Select value={activeShopTeamId || ''} onValueChange={setSelectedShopTeamId}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select team" /></SelectTrigger>
+                  <SelectContent>
+                    {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
+          )}
           <ShopsManager
-            teamId={myTeamId}
-            salespersons={salespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))}
+            teamId={activeShopTeamId}
+            salespersons={shopSalespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))}
           />
         </TabsContent>
 
         <TabsContent value="performance">
-          <PerformanceView teamId={myTeamId} salespersons={salespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))} />
+          <PerformanceView teamId={activeShopTeamId} salespersons={shopSalespersons.map(sp => ({ user_id: sp.user_id, full_name: sp.full_name || '', email: sp.email || '' }))} />
         </TabsContent>
 
         <TabsContent value="approvals" className="space-y-3">

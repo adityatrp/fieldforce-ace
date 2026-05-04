@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, Store, MapPin, RefreshCw, Loader2, AlertTriangle, FileSpreadsheet, UserCheck, Search } from 'lucide-react';
+import { Upload, Store, MapPin, RefreshCw, Loader2, AlertTriangle, FileSpreadsheet, UserCheck, Search, Save } from 'lucide-react';
 import { geocodeAddress, geocodeBatch } from '@/lib/geocode';
 
 type Shop = {
@@ -36,6 +36,11 @@ type Assignment = {
   active: boolean;
 };
 
+type AssignmentDraft = {
+  assignedTo: string;
+  visitsPerMonth: number;
+};
+
 interface Props {
   teamId: string | null | undefined;
   salespersons: Array<{ user_id: string; full_name: string; email: string }>;
@@ -51,6 +56,7 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [search, setSearch] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, AssignmentDraft>>({});
 
   const { data: shops = [] } = useQuery({
     queryKey: ['shops', teamId],
@@ -239,21 +245,45 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
     },
   });
 
-  const setAssignment = useMutation({
-    mutationFn: async ({ shopId, assignedTo, visitsPerMonth }: { shopId: string; assignedTo: string | null; visitsPerMonth: number | null }) => {
-      await supabase.from('shop_assignments').update({ active: false }).eq('shop_id', shopId).eq('active', true);
-      if (assignedTo && visitsPerMonth) {
-        const { error } = await supabase.from('shop_assignments').insert({
-          shop_id: shopId,
-          assigned_to: assignedTo,
-          visits_per_month: visitsPerMonth,
-          assigned_by: user!.id,
-        });
-        if (error) throw error;
-      }
+  const updateDraft = (shopId: string, current: Assignment | undefined, patch: Partial<AssignmentDraft>) => {
+    setDrafts(prev => ({
+      ...prev,
+      [shopId]: {
+        assignedTo: patch.assignedTo ?? prev[shopId]?.assignedTo ?? current?.assigned_to ?? '',
+        visitsPerMonth: patch.visitsPerMonth ?? prev[shopId]?.visitsPerMonth ?? current?.visits_per_month ?? 1,
+      },
+    }));
+  };
+
+  const saveAssignment = useMutation({
+    mutationFn: async ({ shopId, assignmentId, assignedTo, visitsPerMonth }: { shopId: string; assignmentId?: string; assignedTo: string; visitsPerMonth: number }) => {
+      if (!assignedTo) throw new Error('Please select a salesperson.');
+      if (!visitsPerMonth || visitsPerMonth < 1 || visitsPerMonth > 5) throw new Error('Please select a valid visit frequency.');
+
+      const payload = {
+        assigned_to: assignedTo,
+        visits_per_month: visitsPerMonth,
+        assigned_by: user!.id,
+        active: true,
+      };
+
+      const result = assignmentId
+        ? await supabase.from('shop_assignments').update(payload).eq('id', assignmentId).select('id').maybeSingle()
+        : await supabase.from('shop_assignments').insert({ shop_id: shopId, ...payload }).select('id').maybeSingle();
+
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error('Assignment was not saved. Please check your team permissions.');
+      return { shopId };
     },
-    onSuccess: () => {
+    onSuccess: ({ shopId }) => {
+      setDrafts(prev => {
+        const next = { ...prev };
+        delete next[shopId];
+        return next;
+      });
       qc.invalidateQueries({ queryKey: ['shop-assignments'] });
+      qc.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      qc.invalidateQueries({ queryKey: ['visits'] });
       toast({ title: 'Assignment updated' });
     },
     onError: (e: any) => toast({ title: 'Save failed', description: e.message, variant: 'destructive' }),
@@ -291,6 +321,13 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
       ) : (
         filteredShops.map(shop => {
           const a = assignmentByShop.get(shop.id);
+          const draft = drafts[shop.id];
+          const selectedAssignedTo = draft?.assignedTo ?? a?.assigned_to ?? '';
+          const selectedVisitsPerMonth = draft?.visitsPerMonth ?? a?.visits_per_month ?? null;
+          const hasChanges = !!draft && (
+            selectedAssignedTo !== (a?.assigned_to ?? '') ||
+            selectedVisitsPerMonth !== (a?.visits_per_month ?? null)
+          );
           return (
             <Card key={shop.id} className="field-card">
               <CardContent className="p-4 space-y-3">
@@ -324,12 +361,8 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                   <div className="space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">Assigned to</Label>
                     <Select
-                      value={a?.assigned_to || ''}
-                      onValueChange={(v) => setAssignment.mutate({
-                        shopId: shop.id,
-                        assignedTo: v || null,
-                        visitsPerMonth: a?.visits_per_month || 1,
-                      })}
+                      value={selectedAssignedTo}
+                      onValueChange={(v) => updateDraft(shop.id, a, { assignedTo: v })}
                     >
                       <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
                       <SelectContent>
@@ -344,18 +377,8 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                   <div className="space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">Visits / month</Label>
                     <Select
-                      value={String(a?.visits_per_month || '')}
-                      onValueChange={(v) => {
-                        if (!a?.assigned_to) {
-                          toast({ title: 'Select a salesperson first', variant: 'destructive' });
-                          return;
-                        }
-                        setAssignment.mutate({
-                          shopId: shop.id,
-                          assignedTo: a.assigned_to,
-                          visitsPerMonth: parseInt(v, 10),
-                        });
-                      }}
+                      value={selectedVisitsPerMonth ? String(selectedVisitsPerMonth) : ''}
+                      onValueChange={(v) => updateDraft(shop.id, a, { visitsPerMonth: parseInt(v, 10) })}
                     >
                       <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
                       <SelectContent>
@@ -366,6 +389,21 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                     </Select>
                   </div>
                 </div>
+
+                <Button
+                  size="sm"
+                  className="w-full gap-2"
+                  disabled={!hasChanges || !selectedAssignedTo || !selectedVisitsPerMonth || saveAssignment.isPending}
+                  onClick={() => saveAssignment.mutate({
+                    shopId: shop.id,
+                    assignmentId: a?.id,
+                    assignedTo: selectedAssignedTo,
+                    visitsPerMonth: selectedVisitsPerMonth || 1,
+                  })}
+                >
+                  {saveAssignment.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save Changes
+                </Button>
 
                 {a?.assigned_to && (
                   <div className="flex items-center gap-1.5 text-xs text-success">
