@@ -154,8 +154,14 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
         return true;
       });
 
-      // Wipe existing shops for this team
-      await supabase.from('shops').update({ active: false }).eq('team_id', teamId);
+      // Wipe existing shops for this team (and verify it ran under RLS)
+      const { error: wipeErr } = await supabase
+        .from('shops')
+        .update({ active: false })
+        .eq('team_id', teamId)
+        .eq('active', true)
+        .select('id');
+      if (wipeErr) throw new Error(`Could not clear existing shops: ${wipeErr.message}`);
 
       setUploadProgress({ done: 0, total: unique.length });
 
@@ -179,20 +185,34 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
       }));
 
       const errors: string[] = [];
+      let inserted = 0;
       for (let i = 0; i < records.length; i += 200) {
         const chunk = records.slice(i, i + 200);
-        const { error } = await supabase.from('shops').insert(chunk);
+        const { data, error } = await supabase.from('shops').insert(chunk).select('id');
         if (error) errors.push(error.message);
+        inserted += data?.length ?? 0;
+      }
+
+      if (inserted === 0) {
+        throw new Error(
+          errors[0] ||
+          'No shops were saved. You may not have permission to add shops to this team.'
+        );
       }
 
       const failed = geos.filter(g => !g).length;
-      return { count: unique.length, errors, failed };
+      return { attempted: unique.length, inserted, errors, failed };
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['shops'] });
+      const partial = res.inserted < res.attempted;
       toast({
-        title: 'Upload complete',
-        description: `${res.count} shop${res.count === 1 ? '' : 's'} processed.${res.failed ? ` ${res.failed} address(es) couldn't be geocoded.` : ''}${res.errors.length ? ' ' + res.errors.length + ' insert error(s).' : ''}`,
+        title: partial ? 'Upload partially complete' : 'Upload complete',
+        description:
+          `${res.inserted} of ${res.attempted} shop${res.attempted === 1 ? '' : 's'} saved.` +
+          (res.failed ? ` ${res.failed} address(es) couldn't be geocoded.` : '') +
+          (res.errors.length ? ` Errors: ${res.errors.slice(0, 2).join('; ')}` : ''),
+        variant: partial ? 'destructive' : 'default',
       });
       setUploadOpen(false);
       setUploadProgress(null);
