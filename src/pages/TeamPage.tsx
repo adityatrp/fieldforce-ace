@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -92,6 +92,7 @@ const TeamPage: React.FC = () => {
 
   // Search filters
   const [spSearch, setSpSearch] = useState('');
+  const [selectedShopTeamId, setSelectedShopTeamId] = useState('');
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['team-profiles'],
@@ -199,7 +200,14 @@ const TeamPage: React.FC = () => {
   // Team lead's team
   const myTeamMembership = teamMembers.find(tm => tm.user_id === user?.id);
   const myTeamId = myTeamMembership?.team_id;
+  const activeShopTeamId = role === 'admin' ? (selectedShopTeamId || teams[0]?.id) : myTeamId;
   const myTeamMemberIds = teamMembers.filter(tm => tm.team_id === myTeamId).map(tm => tm.user_id);
+
+  useEffect(() => {
+    if (role === 'admin' && !selectedShopTeamId && teams[0]?.id) {
+      setSelectedShopTeamId(teams[0].id);
+    }
+  }, [role, selectedShopTeamId, teams]);
 
   const salespersons = useMemo(() => {
     return profiles.filter(p => {
