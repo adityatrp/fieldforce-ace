@@ -177,7 +177,7 @@ const VisitsPage: React.FC = () => {
     enabled: !!user,
   });
 
-  // Shop assignments → drives the salesperson's recurring period-based visit list.
+  // Shop assignments → drives recurring period-based visit cards for salesperson and self-assigned Team Lead.
   const { data: myAssignments = [] } = useQuery({
     queryKey: ['my-shop-assignments', user?.id],
     queryFn: async () => {
@@ -189,7 +189,7 @@ const VisitsPage: React.FC = () => {
         .eq('active', true);
       return data || [];
     },
-    enabled: !!user && role === 'salesperson',
+    enabled: !!user && (role === 'salesperson' || role === 'team_lead'),
   });
 
   const { data: products = [] } = useQuery({
@@ -230,7 +230,7 @@ const VisitsPage: React.FC = () => {
   // Salesperson sees synthetic "pending" cards generated from shop assignments
   // for the current period. Already-completed periods become "completed" rows.
   const periodPending = useMemo(() => {
-    if (role !== 'salesperson') return [];
+    if (role !== 'salesperson' && role !== 'team_lead') return [];
     const today = new Date();
     return myAssignments.flatMap((a: any) => {
       const shop = a.shops;
@@ -295,7 +295,7 @@ const VisitsPage: React.FC = () => {
     const optimized = currentLocation && dayStarted
       ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, others)
       : others;
-    return [...sortedOverdue, ...optimized];
+    return role === 'team_lead' ? [...periodPending, ...sortedOverdue, ...optimized] : [...sortedOverdue, ...optimized];
   }, [visits, currentLocation, dayStarted, role, periodPending]);
 
   // Future scheduled visits (legacy only)
@@ -718,7 +718,7 @@ const VisitsPage: React.FC = () => {
   const selectedVisit = visits.find(v => v.id === checkInDialog) || periodPending.find((v: any) => v.id === checkInDialog);
   const viewVisit = visits.find(v => v.id === viewDialog);
 
-  const syntheticPendingCount = role === 'salesperson' ? periodPending.length : 0;
+  const syntheticPendingCount = (role === 'salesperson' || role === 'team_lead') ? periodPending.length : 0;
   const totalVisits = visits.length + syntheticPendingCount;
   const verified = visits.filter(v => v.visit_status === 'verified').length;
   const failed = visits.filter(v => v.visit_status === 'failed').length;
