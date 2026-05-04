@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, Store, MapPin, RefreshCw, Loader2, AlertTriangle, FileSpreadsheet, UserCheck, Search } from 'lucide-react';
+import { Upload, Store, MapPin, RefreshCw, Loader2, AlertTriangle, FileSpreadsheet, UserCheck, Search, Save } from 'lucide-react';
 import { geocodeAddress, geocodeBatch } from '@/lib/geocode';
 
 type Shop = {
@@ -36,6 +36,11 @@ type Assignment = {
   active: boolean;
 };
 
+type AssignmentDraft = {
+  assignedTo: string;
+  visitsPerMonth: number;
+};
+
 interface Props {
   teamId: string | null | undefined;
   salespersons: Array<{ user_id: string; full_name: string; email: string }>;
@@ -51,6 +56,7 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [search, setSearch] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, AssignmentDraft>>({});
 
   const { data: shops = [] } = useQuery({
     queryKey: ['shops', teamId],
@@ -239,21 +245,45 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
     },
   });
 
-  const setAssignment = useMutation({
-    mutationFn: async ({ shopId, assignedTo, visitsPerMonth }: { shopId: string; assignedTo: string | null; visitsPerMonth: number | null }) => {
-      await supabase.from('shop_assignments').update({ active: false }).eq('shop_id', shopId).eq('active', true);
-      if (assignedTo && visitsPerMonth) {
-        const { error } = await supabase.from('shop_assignments').insert({
-          shop_id: shopId,
-          assigned_to: assignedTo,
-          visits_per_month: visitsPerMonth,
-          assigned_by: user!.id,
-        });
-        if (error) throw error;
-      }
+  const updateDraft = (shopId: string, current: Assignment | undefined, patch: Partial<AssignmentDraft>) => {
+    setDrafts(prev => ({
+      ...prev,
+      [shopId]: {
+        assignedTo: patch.assignedTo ?? prev[shopId]?.assignedTo ?? current?.assigned_to ?? '',
+        visitsPerMonth: patch.visitsPerMonth ?? prev[shopId]?.visitsPerMonth ?? current?.visits_per_month ?? 1,
+      },
+    }));
+  };
+
+  const saveAssignment = useMutation({
+    mutationFn: async ({ shopId, assignmentId, assignedTo, visitsPerMonth }: { shopId: string; assignmentId?: string; assignedTo: string; visitsPerMonth: number }) => {
+      if (!assignedTo) throw new Error('Please select a salesperson.');
+      if (!visitsPerMonth || visitsPerMonth < 1 || visitsPerMonth > 5) throw new Error('Please select a valid visit frequency.');
+
+      const payload = {
+        assigned_to: assignedTo,
+        visits_per_month: visitsPerMonth,
+        assigned_by: user!.id,
+        active: true,
+      };
+
+      const result = assignmentId
+        ? await supabase.from('shop_assignments').update(payload).eq('id', assignmentId).select('id').maybeSingle()
+        : await supabase.from('shop_assignments').insert({ shop_id: shopId, ...payload }).select('id').maybeSingle();
+
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error('Assignment was not saved. Please check your team permissions.');
+      return { shopId };
     },
-    onSuccess: () => {
+    onSuccess: ({ shopId }) => {
+      setDrafts(prev => {
+        const next = { ...prev };
+        delete next[shopId];
+        return next;
+      });
       qc.invalidateQueries({ queryKey: ['shop-assignments'] });
+      qc.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      qc.invalidateQueries({ queryKey: ['visits'] });
       toast({ title: 'Assignment updated' });
     },
     onError: (e: any) => toast({ title: 'Save failed', description: e.message, variant: 'destructive' }),
