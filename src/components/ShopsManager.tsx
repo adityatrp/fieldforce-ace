@@ -321,6 +321,13 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
       ) : (
         filteredShops.map(shop => {
           const a = assignmentByShop.get(shop.id);
+          const draft = drafts[shop.id];
+          const selectedAssignedTo = draft?.assignedTo ?? a?.assigned_to ?? '';
+          const selectedVisitsPerMonth = draft?.visitsPerMonth ?? a?.visits_per_month ?? null;
+          const hasChanges = !!draft && (
+            selectedAssignedTo !== (a?.assigned_to ?? '') ||
+            selectedVisitsPerMonth !== (a?.visits_per_month ?? null)
+          );
           return (
             <Card key={shop.id} className="field-card">
               <CardContent className="p-4 space-y-3">
@@ -354,12 +361,8 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                   <div className="space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">Assigned to</Label>
                     <Select
-                      value={a?.assigned_to || ''}
-                      onValueChange={(v) => setAssignment.mutate({
-                        shopId: shop.id,
-                        assignedTo: v || null,
-                        visitsPerMonth: a?.visits_per_month || 1,
-                      })}
+                      value={selectedAssignedTo}
+                      onValueChange={(v) => updateDraft(shop.id, a, { assignedTo: v })}
                     >
                       <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
                       <SelectContent>
@@ -374,18 +377,8 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                   <div className="space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">Visits / month</Label>
                     <Select
-                      value={String(a?.visits_per_month || '')}
-                      onValueChange={(v) => {
-                        if (!a?.assigned_to) {
-                          toast({ title: 'Select a salesperson first', variant: 'destructive' });
-                          return;
-                        }
-                        setAssignment.mutate({
-                          shopId: shop.id,
-                          assignedTo: a.assigned_to,
-                          visitsPerMonth: parseInt(v, 10),
-                        });
-                      }}
+                      value={selectedVisitsPerMonth ? String(selectedVisitsPerMonth) : ''}
+                      onValueChange={(v) => updateDraft(shop.id, a, { visitsPerMonth: parseInt(v, 10) })}
                     >
                       <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
                       <SelectContent>
@@ -396,6 +389,21 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                     </Select>
                   </div>
                 </div>
+
+                <Button
+                  size="sm"
+                  className="w-full gap-2"
+                  disabled={!hasChanges || !selectedAssignedTo || !selectedVisitsPerMonth || saveAssignment.isPending}
+                  onClick={() => saveAssignment.mutate({
+                    shopId: shop.id,
+                    assignmentId: a?.id,
+                    assignedTo: selectedAssignedTo,
+                    visitsPerMonth: selectedVisitsPerMonth || 1,
+                  })}
+                >
+                  {saveAssignment.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save Changes
+                </Button>
 
                 {a?.assigned_to && (
                   <div className="flex items-center gap-1.5 text-xs text-success">
