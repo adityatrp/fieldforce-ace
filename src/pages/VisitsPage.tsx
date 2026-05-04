@@ -797,15 +797,22 @@ const VisitsPage: React.FC = () => {
           {/* Bottom: action buttons row */}
           {(() => {
             const showView = (v.visit_status === 'verified' || v.visit_status === 'failed');
-            const showMap = v.visit_status === 'assigned' && v.assigned_to === user?.id && v.target_latitude && v.target_longitude;
+            const hasTargetCoords = !!v.target_latitude && !!v.target_longitude;
+            const showMap = v.visit_status === 'assigned' && v.assigned_to === user?.id && hasTargetCoords;
             const showEditOrder = v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && ((v as any).order_approval_status || 'pending') !== 'approved';
-            const showCheckInSales = v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming;
-            const showCheckInLead = v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming;
+            const showCheckInSales = v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming && hasTargetCoords;
+            const showCheckInLead = v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming && hasTargetCoords;
             const showCheckOut = (v.visit_status === 'verified' || v.visit_status === 'checked_in') && !v.checked_out_at;
-            const hasAny = showView || showMap || showEditOrder || showCheckInSales || showCheckInLead || showCheckOut;
+            const showNoCoords = v.visit_status === 'assigned' && v.assigned_to === user?.id && !hasTargetCoords;
+            const hasAny = showView || showMap || showEditOrder || showCheckInSales || showCheckInLead || showCheckOut || showNoCoords;
             if (!hasAny) return null;
             return (
               <div className="flex gap-2 flex-wrap pt-1 border-t border-border/50">
+                {showNoCoords && (
+                  <div className="w-full text-xs text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
+                    Coordinates missing. Ask your Team Lead to refresh this shop before check-in.
+                  </div>
+                )}
                 {showView && (
                   <Button size="sm" variant="ghost" className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[90px]" onClick={() => setViewDialog(v.id)}>
                     <Eye className="h-3.5 w-3.5 mr-1" /> View
