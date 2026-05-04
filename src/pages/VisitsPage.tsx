@@ -973,7 +973,7 @@ const VisitsPage: React.FC = () => {
 
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground text-sm">Loading visits...</div>
-      ) : visits.length === 0 ? (
+      ) : totalVisits === 0 ? (
         <Card className="rounded-2xl">
           <CardContent className="py-12 text-center">
             <MapPin className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
