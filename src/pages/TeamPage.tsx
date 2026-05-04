@@ -231,6 +231,13 @@ const TeamPage: React.FC = () => {
     );
   }, [salespersons, spSearch]);
 
+  const shopSalespersons = useMemo(() => {
+    if (role !== 'admin') return salespersons;
+    if (!activeShopTeamId) return [];
+    const activeTeamMemberIds = teamMembers.filter(tm => tm.team_id === activeShopTeamId).map(tm => tm.user_id);
+    return salespersons.filter(sp => activeTeamMemberIds.includes(sp.user_id));
+  }, [role, salespersons, teamMembers, activeShopTeamId]);
+
   const visibleMembers = useMemo(() => {
     if (role === 'admin') return profiles;
     if (role === 'team_lead') {
