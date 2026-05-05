@@ -800,6 +800,16 @@ const VisitsPage: React.FC = () => {
           {/* Middle: status badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${config.color}`}>{config.label}</Badge>
+            {v.synthetic && typeof v.visits_per_month === 'number' && (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0">
+                {v.completed_this_month}/{v.visits_per_month} this month
+              </Badge>
+            )}
+            {v.synthetic && v.cooldown_until && (
+              <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] px-1.5 py-0">
+                ⏳ Next in {formatCooldown(new Date(v.cooldown_until))}
+              </Badge>
+            )}
             {v.order_received && (() => {
               const s = (v as any).order_approval_status || 'pending';
               const cls = s === 'approved'
