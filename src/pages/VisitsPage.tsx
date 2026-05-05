@@ -18,7 +18,7 @@ import { readBattery } from '@/lib/battery';
 import { startBackgroundTracking, stopBackgroundTracking, requestBackgroundLocationUpgrade } from '@/lib/backgroundTracker';
 import { upsertTodaySummary } from '@/lib/dailySummary';
 import { workdayBounds } from '@/lib/workday';
-import { currentPeriod, isoDate, periodLabel } from '@/lib/visitPeriods';
+import { evaluateAssignment, monthStart, formatCooldown, MIN_GAP_HOURS } from '@/lib/visitCounter';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -227,25 +227,39 @@ const VisitsPage: React.FC = () => {
     return products.filter(p => p.name.toLowerCase().includes(q));
   }, [products, productSearch]);
 
-  // Salesperson sees synthetic "pending" cards generated from shop assignments
-  // for the current period. Already-completed periods become "completed" rows.
+  // Fetch this month's verified visits for the user's shops, used to count
+  // completions and enforce the 72-hour cooldown between successful check-ins.
+  const { data: monthVisits = [] } = useQuery({
+    queryKey: ['my-month-visits', user?.id, monthStart().toISOString()],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from('visits')
+        .select('id, shop_id, assignment_id, visit_status, checked_in_at')
+        .eq('assigned_to', user.id)
+        .gte('checked_in_at', monthStart().toISOString());
+      return data || [];
+    },
+    enabled: !!user && (role === 'salesperson' || role === 'team_lead'),
+  });
+
+  // Salesperson/Team-Lead sees one synthetic "pending" card per assigned shop
+  // as long as completed-this-month < visits_per_month. If the last successful
+  // check-in was <72h ago, the card is shown but locked with a cooldown.
   const periodPending = useMemo(() => {
     if (role !== 'salesperson' && role !== 'team_lead') return [];
-    const today = new Date();
+    const now = new Date();
     return myAssignments.flatMap((a: any) => {
       const shop = a.shops;
       if (!shop) return [];
-      const p = currentPeriod(today, a.visits_per_month);
-      // Has the salesperson already checked in this period?
-      const existing = visits.find((v: any) =>
-        v.shop_id === shop.id &&
-        v.assignment_id === a.id &&
-        v.period_start === isoDate(p.start)
+      const shopVisits = monthVisits.filter(
+        (v: any) => v.shop_id === shop.id && v.assignment_id === a.id,
       );
-      if (existing) return []; // current period already done — appears under completed
-      // Synthetic visit-shaped object for this assignment + period
+      const eval_ = evaluateAssignment(shopVisits as any, a.visits_per_month, now);
+      if (eval_.done) return []; // all visits for the month complete
+
       return [{
-        id: `shop:${shop.id}:${p.index}:${isoDate(p.start)}`,
+        id: `shop:${shop.id}:${a.id}`,
         synthetic: true,
         shop_id: shop.id,
         assignment_id: a.id,
@@ -263,14 +277,15 @@ const VisitsPage: React.FC = () => {
         created_at: new Date().toISOString(),
         checked_in_at: new Date().toISOString(),
         checked_out_at: null,
-        period_index: p.index,
-        period_start: isoDate(p.start),
-        period_end: isoDate(p.end),
-        period_label: periodLabel(p),
+        // Counter / cooldown info for the card
         visits_per_month: a.visits_per_month,
+        completed_this_month: eval_.completedThisMonth,
+        remaining_this_month: eval_.remaining,
+        cooldown_until: eval_.cooldownUntil ? eval_.cooldownUntil.toISOString() : null,
+        eligible_now: eval_.eligible,
       }];
     });
-  }, [role, myAssignments, visits, user]);
+  }, [role, myAssignments, monthVisits, user]);
 
   // Separate pending and completed visits, with overdue-first then optimized order
   const pendingVisits = useMemo(() => {
@@ -563,9 +578,6 @@ const VisitsPage: React.FC = () => {
           order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
           shop_id: v.shop_id,
           assignment_id: v.assignment_id,
-          period_index: v.period_index,
-          period_start: v.period_start,
-          period_end: v.period_end,
           user_id: user!.id,
         } as any).select('id').single();
         if (insErr) throw insErr;
@@ -583,6 +595,24 @@ const VisitsPage: React.FC = () => {
           order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
         }).eq('id', visitId);
         if (error) throw error;
+      }
+
+      // Out-of-radius attempt → log so Team Lead gets a notification
+      if (!isVerified) {
+        try {
+          await supabase.from('failed_check_in_attempts').insert({
+            user_id: user!.id,
+            shop_id: (visit as any).shop_id || null,
+            assignment_id: (visit as any).assignment_id || null,
+            shop_name: (visit as any).customer_name || '',
+            target_latitude: (visit as any).target_latitude,
+            target_longitude: (visit as any).target_longitude,
+            attempt_latitude: coords.lat,
+            attempt_longitude: coords.lng,
+            distance_meters: Math.round(distance),
+            attempt_accuracy: coords.accuracy,
+          });
+        } catch { /* never block the visit on the audit log */ }
       }
 
       if (orderReceived && orderItems.length > 0) {
@@ -615,6 +645,7 @@ const VisitsPage: React.FC = () => {
     },
     onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
+      queryClient.invalidateQueries({ queryKey: ['my-month-visits'] });
       if (result.isVerified) {
         toast({ title: '✅ Visit Verified!', description: `Within ${result.distance}m of target.` });
       } else {
@@ -769,6 +800,16 @@ const VisitsPage: React.FC = () => {
           {/* Middle: status badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${config.color}`}>{config.label}</Badge>
+            {v.synthetic && typeof v.visits_per_month === 'number' && (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0">
+                {v.completed_this_month}/{v.visits_per_month} this month
+              </Badge>
+            )}
+            {v.synthetic && v.cooldown_until && (
+              <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] px-1.5 py-0">
+                ⏳ Next in {formatCooldown(new Date(v.cooldown_until))}
+              </Badge>
+            )}
             {v.order_received && (() => {
               const s = (v as any).order_approval_status || 'pending';
               const cls = s === 'approved'
@@ -859,17 +900,46 @@ const VisitsPage: React.FC = () => {
                         });
                         return;
                       }
+                      if (v.synthetic && v.eligible_now === false && v.cooldown_until) {
+                        toast({
+                          title: `Wait ${MIN_GAP_HOURS}h between visits`,
+                          description: `Next allowed in ${formatCooldown(new Date(v.cooldown_until))}.`,
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
                       checkInOpenedAtRef.current = new Date().toISOString();
                       setCheckInDialog(v.id);
                     }}
-                    disabled={!dayStarted}
-                    title={!dayStarted ? 'Punch in to start your day before checking in' : undefined}
+                    disabled={!dayStarted || (v.synthetic && v.eligible_now === false)}
+                    title={
+                      !dayStarted ? 'Punch in to start your day before checking in'
+                      : (v.synthetic && v.eligible_now === false && v.cooldown_until)
+                        ? `Next visit allowed in ${formatCooldown(new Date(v.cooldown_until))}`
+                        : undefined
+                    }
                   >
                     <Navigation className="h-3.5 w-3.5 mr-1" /> Check In
                   </Button>
                 )}
                 {showCheckInLead && (
-                  <Button size="sm" className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]" onClick={() => { checkInOpenedAtRef.current = new Date().toISOString(); setCheckInDialog(v.id); }}>
+                  <Button
+                    size="sm"
+                    className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]"
+                    onClick={() => {
+                      if (v.synthetic && v.eligible_now === false && v.cooldown_until) {
+                        toast({
+                          title: `Wait ${MIN_GAP_HOURS}h between visits`,
+                          description: `Next allowed in ${formatCooldown(new Date(v.cooldown_until))}.`,
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      checkInOpenedAtRef.current = new Date().toISOString();
+                      setCheckInDialog(v.id);
+                    }}
+                    disabled={v.synthetic && v.eligible_now === false}
+                  >
                     <Navigation className="h-3.5 w-3.5 mr-1" /> Check In
                   </Button>
                 )}
