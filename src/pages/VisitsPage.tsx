@@ -227,25 +227,39 @@ const VisitsPage: React.FC = () => {
     return products.filter(p => p.name.toLowerCase().includes(q));
   }, [products, productSearch]);
 
-  // Salesperson sees synthetic "pending" cards generated from shop assignments
-  // for the current period. Already-completed periods become "completed" rows.
+  // Fetch this month's verified visits for the user's shops, used to count
+  // completions and enforce the 72-hour cooldown between successful check-ins.
+  const { data: monthVisits = [] } = useQuery({
+    queryKey: ['my-month-visits', user?.id, monthStart().toISOString()],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from('visits')
+        .select('id, shop_id, assignment_id, visit_status, checked_in_at')
+        .eq('assigned_to', user.id)
+        .gte('checked_in_at', monthStart().toISOString());
+      return data || [];
+    },
+    enabled: !!user && (role === 'salesperson' || role === 'team_lead'),
+  });
+
+  // Salesperson/Team-Lead sees one synthetic "pending" card per assigned shop
+  // as long as completed-this-month < visits_per_month. If the last successful
+  // check-in was <72h ago, the card is shown but locked with a cooldown.
   const periodPending = useMemo(() => {
     if (role !== 'salesperson' && role !== 'team_lead') return [];
-    const today = new Date();
+    const now = new Date();
     return myAssignments.flatMap((a: any) => {
       const shop = a.shops;
       if (!shop) return [];
-      const p = currentPeriod(today, a.visits_per_month);
-      // Has the salesperson already checked in this period?
-      const existing = visits.find((v: any) =>
-        v.shop_id === shop.id &&
-        v.assignment_id === a.id &&
-        v.period_start === isoDate(p.start)
+      const shopVisits = monthVisits.filter(
+        (v: any) => v.shop_id === shop.id && v.assignment_id === a.id,
       );
-      if (existing) return []; // current period already done — appears under completed
-      // Synthetic visit-shaped object for this assignment + period
+      const eval_ = evaluateAssignment(shopVisits as any, a.visits_per_month, now);
+      if (eval_.done) return []; // all visits for the month complete
+
       return [{
-        id: `shop:${shop.id}:${p.index}:${isoDate(p.start)}`,
+        id: `shop:${shop.id}:${a.id}`,
         synthetic: true,
         shop_id: shop.id,
         assignment_id: a.id,
@@ -263,14 +277,15 @@ const VisitsPage: React.FC = () => {
         created_at: new Date().toISOString(),
         checked_in_at: new Date().toISOString(),
         checked_out_at: null,
-        period_index: p.index,
-        period_start: isoDate(p.start),
-        period_end: isoDate(p.end),
-        period_label: periodLabel(p),
+        // Counter / cooldown info for the card
         visits_per_month: a.visits_per_month,
+        completed_this_month: eval_.completedThisMonth,
+        remaining_this_month: eval_.remaining,
+        cooldown_until: eval_.cooldownUntil ? eval_.cooldownUntil.toISOString() : null,
+        eligible_now: eval_.eligible,
       }];
     });
-  }, [role, myAssignments, visits, user]);
+  }, [role, myAssignments, monthVisits, user]);
 
   // Separate pending and completed visits, with overdue-first then optimized order
   const pendingVisits = useMemo(() => {
