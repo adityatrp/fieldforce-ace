@@ -578,9 +578,6 @@ const VisitsPage: React.FC = () => {
           order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
           shop_id: v.shop_id,
           assignment_id: v.assignment_id,
-          period_index: v.period_index,
-          period_start: v.period_start,
-          period_end: v.period_end,
           user_id: user!.id,
         } as any).select('id').single();
         if (insErr) throw insErr;
@@ -598,6 +595,24 @@ const VisitsPage: React.FC = () => {
           order_notes: orderNotes + (finalDiscount > 0 ? ` | Discount: ${finalDiscount}%` : ''),
         }).eq('id', visitId);
         if (error) throw error;
+      }
+
+      // Out-of-radius attempt → log so Team Lead gets a notification
+      if (!isVerified) {
+        try {
+          await supabase.from('failed_check_in_attempts').insert({
+            user_id: user!.id,
+            shop_id: (visit as any).shop_id || null,
+            assignment_id: (visit as any).assignment_id || null,
+            shop_name: (visit as any).customer_name || '',
+            target_latitude: (visit as any).target_latitude,
+            target_longitude: (visit as any).target_longitude,
+            attempt_latitude: coords.lat,
+            attempt_longitude: coords.lng,
+            distance_meters: Math.round(distance),
+            attempt_accuracy: coords.accuracy,
+          });
+        } catch { /* never block the visit on the audit log */ }
       }
 
       if (orderReceived && orderItems.length > 0) {
