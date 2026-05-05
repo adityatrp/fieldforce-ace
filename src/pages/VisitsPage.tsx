@@ -18,7 +18,7 @@ import { readBattery } from '@/lib/battery';
 import { startBackgroundTracking, stopBackgroundTracking, requestBackgroundLocationUpgrade } from '@/lib/backgroundTracker';
 import { upsertTodaySummary } from '@/lib/dailySummary';
 import { workdayBounds } from '@/lib/workday';
-import { currentPeriod, isoDate, periodLabel } from '@/lib/visitPeriods';
+import { evaluateAssignment, monthStart, formatCooldown, MIN_GAP_HOURS } from '@/lib/visitCounter';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
