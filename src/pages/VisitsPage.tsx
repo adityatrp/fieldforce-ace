@@ -645,6 +645,7 @@ const VisitsPage: React.FC = () => {
     },
     onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
+      queryClient.invalidateQueries({ queryKey: ['my-month-visits'] });
       if (result.isVerified) {
         toast({ title: '✅ Visit Verified!', description: `Within ${result.distance}m of target.` });
       } else {
