@@ -149,6 +149,54 @@ export type Database = {
         }
         Relationships: []
       }
+      failed_check_in_attempts: {
+        Row: {
+          assignment_id: string | null
+          attempt_accuracy: number | null
+          attempt_latitude: number
+          attempt_longitude: number
+          attempted_at: string
+          created_at: string
+          distance_meters: number
+          id: string
+          shop_id: string | null
+          shop_name: string
+          target_latitude: number | null
+          target_longitude: number | null
+          user_id: string
+        }
+        Insert: {
+          assignment_id?: string | null
+          attempt_accuracy?: number | null
+          attempt_latitude: number
+          attempt_longitude: number
+          attempted_at?: string
+          created_at?: string
+          distance_meters: number
+          id?: string
+          shop_id?: string | null
+          shop_name?: string
+          target_latitude?: number | null
+          target_longitude?: number | null
+          user_id: string
+        }
+        Update: {
+          assignment_id?: string | null
+          attempt_accuracy?: number | null
+          attempt_latitude?: number
+          attempt_longitude?: number
+          attempted_at?: string
+          created_at?: string
+          distance_meters?: number
+          id?: string
+          shop_id?: string | null
+          shop_name?: string
+          target_latitude?: number | null
+          target_longitude?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       location_logs: {
         Row: {
           accuracy: number | null
