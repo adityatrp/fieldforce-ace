@@ -900,17 +900,46 @@ const VisitsPage: React.FC = () => {
                         });
                         return;
                       }
+                      if (v.synthetic && v.eligible_now === false && v.cooldown_until) {
+                        toast({
+                          title: `Wait ${MIN_GAP_HOURS}h between visits`,
+                          description: `Next allowed in ${formatCooldown(new Date(v.cooldown_until))}.`,
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
                       checkInOpenedAtRef.current = new Date().toISOString();
                       setCheckInDialog(v.id);
                     }}
-                    disabled={!dayStarted}
-                    title={!dayStarted ? 'Punch in to start your day before checking in' : undefined}
+                    disabled={!dayStarted || (v.synthetic && v.eligible_now === false)}
+                    title={
+                      !dayStarted ? 'Punch in to start your day before checking in'
+                      : (v.synthetic && v.eligible_now === false && v.cooldown_until)
+                        ? `Next visit allowed in ${formatCooldown(new Date(v.cooldown_until))}`
+                        : undefined
+                    }
                   >
                     <Navigation className="h-3.5 w-3.5 mr-1" /> Check In
                   </Button>
                 )}
                 {showCheckInLead && (
-                  <Button size="sm" className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]" onClick={() => { checkInOpenedAtRef.current = new Date().toISOString(); setCheckInDialog(v.id); }}>
+                  <Button
+                    size="sm"
+                    className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]"
+                    onClick={() => {
+                      if (v.synthetic && v.eligible_now === false && v.cooldown_until) {
+                        toast({
+                          title: `Wait ${MIN_GAP_HOURS}h between visits`,
+                          description: `Next allowed in ${formatCooldown(new Date(v.cooldown_until))}.`,
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      checkInOpenedAtRef.current = new Date().toISOString();
+                      setCheckInDialog(v.id);
+                    }}
+                    disabled={v.synthetic && v.eligible_now === false}
+                  >
                     <Navigation className="h-3.5 w-3.5 mr-1" /> Check In
                   </Button>
                 )}
