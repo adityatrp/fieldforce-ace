@@ -881,17 +881,7 @@ const VisitsPage: React.FC = () => {
                     size="sm"
                     variant="outline"
                     className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]"
-                    disabled={role === 'salesperson' && !dayStarted}
-                    title={role === 'salesperson' && !dayStarted ? 'Punch in to view location on map' : undefined}
                     onClick={() => {
-                      if (role === 'salesperson' && !dayStarted) {
-                        toast({
-                          title: 'Punch in first',
-                          description: 'You can view the location on the map after punching in.',
-                          variant: 'destructive',
-                        });
-                        return;
-                      }
                       const url = `https://www.google.com/maps/search/?api=1&query=${v.target_latitude},${v.target_longitude}`;
                       window.open(url, '_blank', 'noopener,noreferrer');
                     }}
