@@ -177,17 +177,34 @@ const VisitsPage: React.FC = () => {
     enabled: !!user,
   });
 
-  // Shop assignments → drives recurring period-based visit cards for salesperson and self-assigned Team Lead.
+  // Shop assignments → drives recurring monthly visit cards for salesperson and self-assigned Team Lead.
   const { data: myAssignments = [] } = useQuery({
     queryKey: ['my-shop-assignments', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data } = await supabase
+      const { data: assignments, error: assignmentError } = await supabase
         .from('shop_assignments')
-        .select('id, shop_id, visits_per_month, assigned_to, shops(id, name, address, latitude, longitude)')
+        .select('id, shop_id, visits_per_month, assigned_to')
         .eq('assigned_to', user.id)
         .eq('active', true);
-      return data || [];
+      if (assignmentError) throw assignmentError;
+
+      const activeAssignments = assignments || [];
+      const shopIds = activeAssignments.map(a => a.shop_id).filter(Boolean);
+      if (shopIds.length === 0) return [];
+
+      const { data: shops, error: shopsError } = await supabase
+        .from('shops')
+        .select('id, name, address, latitude, longitude')
+        .in('id', shopIds)
+        .eq('active', true);
+      if (shopsError) throw shopsError;
+
+      const shopsById = new Map((shops || []).map(shop => [shop.id, shop]));
+      return activeAssignments.map(assignment => ({
+        ...assignment,
+        shops: shopsById.get(assignment.shop_id) || null,
+      }));
     },
     enabled: !!user && (role === 'salesperson' || role === 'team_lead'),
   });
@@ -864,17 +881,7 @@ const VisitsPage: React.FC = () => {
                     size="sm"
                     variant="outline"
                     className="h-9 native-btn rounded-xl text-xs flex-1 min-w-[110px]"
-                    disabled={role === 'salesperson' && !dayStarted}
-                    title={role === 'salesperson' && !dayStarted ? 'Punch in to view location on map' : undefined}
                     onClick={() => {
-                      if (role === 'salesperson' && !dayStarted) {
-                        toast({
-                          title: 'Punch in first',
-                          description: 'You can view the location on the map after punching in.',
-                          variant: 'destructive',
-                        });
-                        return;
-                      }
                       const url = `https://www.google.com/maps/search/?api=1&query=${v.target_latitude},${v.target_longitude}`;
                       window.open(url, '_blank', 'noopener,noreferrer');
                     }}
