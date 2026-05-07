@@ -408,6 +408,27 @@ const VisitsPage: React.FC = () => {
     }
   }, [todayPunch, user]);
 
+  // Realtime: live-update visits/shops/assignments across dashboards.
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel('visits-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['visits'] });
+        queryClient.invalidateQueries({ queryKey: ['my-month-visits'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shops' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['shops'] });
+        queryClient.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_assignments' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['shop-assignments'] });
+        queryClient.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user, queryClient]);
+
   const handleStartDay = useCallback(async () => {
     // Once-per-workday guard: if a punch already exists in this 5 AM window, refuse.
     if (todayPunch) {
