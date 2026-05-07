@@ -329,13 +329,13 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-sm truncate">{shop.name}</p>
-                      {shop.geocode_status === 'ok' ? (
+                      {shop.latitude != null && shop.longitude != null ? (
                         <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-[10px] gap-1">
-                          <MapPin className="h-3 w-3" /> Geocoded
+                          <MapPin className="h-3 w-3" /> Pinned
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-[10px] gap-1">
-                          <AlertTriangle className="h-3 w-3" /> No coords
+                        <Badge variant="outline" className="bg-muted text-muted-foreground border-muted text-[10px] gap-1">
+                          <AlertTriangle className="h-3 w-3" /> Awaiting first visit
                         </Badge>
                       )}
                     </div>
