@@ -1368,7 +1368,7 @@ const TeamPage: React.FC = () => {
         <TabsContent value="members">
           <div className="flex justify-end gap-2 mb-4 flex-wrap">
             {(role === 'team_lead' || role === 'admin') && !isTrialLockedLead && (
-              <Button variant="outline" onClick={() => setCreateUserOpen(true)} className="gap-2">
+              <Button variant="outline" disabled aria-disabled="true" className="gap-2 opacity-60 cursor-not-allowed" title="Temporarily disabled">
                 <UserPlus className="h-4 w-4" /> Create Salesperson
               </Button>
             )}
