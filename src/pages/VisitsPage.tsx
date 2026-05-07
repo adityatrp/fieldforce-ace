@@ -678,12 +678,16 @@ const VisitsPage: React.FC = () => {
         });
       } catch { /* never block check-in on logging */ }
 
-      return { isVerified, distance: Math.round(distance) };
+      return { isVerified, distance: Math.round(distance), isFirstPin };
     },
     onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
       queryClient.invalidateQueries({ queryKey: ['my-month-visits'] });
-      if (result.isVerified) {
+      queryClient.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      queryClient.invalidateQueries({ queryKey: ['shops'] });
+      if (result.isFirstPin) {
+        toast({ title: '📍 Shop Pinned!', description: 'Location saved. Future visits will verify against these coordinates.' });
+      } else if (result.isVerified) {
         toast({ title: '✅ Visit Verified!', description: `Within ${result.distance}m of target.` });
       } else {
         toast({
