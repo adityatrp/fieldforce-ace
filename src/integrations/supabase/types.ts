@@ -777,6 +777,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      set_shop_coords_if_unset: {
+        Args: { _lat: number; _lng: number; _shop_id: string }
+        Returns: boolean
+      }
       user_has_active_shop_assignment: {
         Args: { _shop_id: string; _user_id: string }
         Returns: boolean
