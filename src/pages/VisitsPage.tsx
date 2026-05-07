@@ -882,17 +882,17 @@ const VisitsPage: React.FC = () => {
             const hasTargetCoords = !!v.target_latitude && !!v.target_longitude;
             const showMap = v.visit_status === 'assigned' && v.assigned_to === user?.id && hasTargetCoords;
             const showEditOrder = v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && ((v as any).order_approval_status || 'pending') !== 'approved';
-            const showCheckInSales = v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming && hasTargetCoords;
-            const showCheckInLead = v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming && hasTargetCoords;
+            const showCheckInSales = v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming;
+            const showCheckInLead = v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming;
             const showCheckOut = (v.visit_status === 'verified' || v.visit_status === 'checked_in') && !v.checked_out_at;
-            const showNoCoords = v.visit_status === 'assigned' && v.assigned_to === user?.id && !hasTargetCoords;
-            const hasAny = showView || showMap || showEditOrder || showCheckInSales || showCheckInLead || showCheckOut || showNoCoords;
+            const showFirstPinHint = v.visit_status === 'assigned' && v.assigned_to === user?.id && !hasTargetCoords;
+            const hasAny = showView || showMap || showEditOrder || showCheckInSales || showCheckInLead || showCheckOut || showFirstPinHint;
             if (!hasAny) return null;
             return (
               <div className="flex gap-2 flex-wrap pt-1 border-t border-border/50">
-                {showNoCoords && (
-                  <div className="w-full text-xs text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
-                    Coordinates missing. Ask your Team Lead to refresh this shop before check-in.
+                {showFirstPinHint && (
+                  <div className="w-full text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
+                    📍 First visit — your current location will be saved as this shop's permanent coordinates.
                   </div>
                 )}
                 {showView && (
