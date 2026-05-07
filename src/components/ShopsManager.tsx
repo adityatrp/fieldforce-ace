@@ -169,24 +169,20 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
         .select('id');
       if (wipeErr) throw new Error(`Could not clear existing shops: ${wipeErr.message}`);
 
-      setUploadProgress({ done: 0, total: unique.length });
+      setUploadProgress({ done: unique.length, total: unique.length });
 
-      // Parallel batch geocode (Photon + Nominatim fallback, 6 concurrent)
-      const geos = await geocodeBatch(
-        unique.map(r => r.address),
-        (done, total) => setUploadProgress({ done, total })
-      );
-
-      const records = unique.map((r, i) => ({
+      // No geocoding on upload — coordinates are captured on the salesperson's
+      // first verified visit and stored as the shop's permanent location.
+      const records = unique.map((r) => ({
         team_id: teamId,
         name: r.name,
         address: r.address,
         contact_person: r.contact_person,
         phone: r.phone,
-        latitude: geos[i]?.lat ?? null,
-        longitude: geos[i]?.lng ?? null,
-        geocode_status: geos[i] ? 'ok' : 'failed',
-        geocode_error: geos[i] ? '' : 'No match found',
+        latitude: null,
+        longitude: null,
+        geocode_status: 'pending',
+        geocode_error: '',
         created_by: user!.id,
       }));
 
@@ -206,8 +202,7 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
         );
       }
 
-      const failed = geos.filter(g => !g).length;
-      return { attempted: unique.length, inserted, errors, failed };
+      return { attempted: unique.length, inserted, errors };
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['shops'] });
@@ -215,8 +210,7 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
       toast({
         title: partial ? 'Upload partially complete' : 'Upload complete',
         description:
-          `${res.inserted} of ${res.attempted} shop${res.attempted === 1 ? '' : 's'} saved.` +
-          (res.failed ? ` ${res.failed} address(es) couldn't be geocoded.` : '') +
+          `${res.inserted} of ${res.attempted} shop${res.attempted === 1 ? '' : 's'} saved. Coordinates will be captured on first verified visit.` +
           (res.errors.length ? ` Errors: ${res.errors.slice(0, 2).join('; ')}` : ''),
         variant: partial ? 'destructive' : 'default',
       });
@@ -335,13 +329,13 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-sm truncate">{shop.name}</p>
-                      {shop.geocode_status === 'ok' ? (
+                      {shop.latitude != null && shop.longitude != null ? (
                         <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-[10px] gap-1">
-                          <MapPin className="h-3 w-3" /> Geocoded
+                          <MapPin className="h-3 w-3" /> Pinned
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-[10px] gap-1">
-                          <AlertTriangle className="h-3 w-3" /> No coords
+                        <Badge variant="outline" className="bg-muted text-muted-foreground border-muted text-[10px] gap-1">
+                          <AlertTriangle className="h-3 w-3" /> Awaiting first visit
                         </Badge>
                       )}
                     </div>

@@ -308,13 +308,14 @@ const VisitsPage: React.FC = () => {
   const pendingVisits = useMemo(() => {
     const now = Date.now();
     if (role === 'salesperson') {
-      // Period-based items only — no due_date, no schedule.
       const items = periodPending;
-      const optimized = currentLocation && dayStarted
-        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, items.filter((v: any) => v.target_latitude && v.target_longitude))
-        : items;
+      const withCoords = items.filter((v: any) => v.target_latitude && v.target_longitude);
       const withoutCoords = items.filter((v: any) => !v.target_latitude || !v.target_longitude);
-      return currentLocation && dayStarted ? [...optimized, ...withoutCoords] : optimized;
+      const optimized = currentLocation && dayStarted
+        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, withCoords)
+        : withCoords;
+      // First-visit shops (no coords yet) appear first so salesperson can pin them.
+      return [...withoutCoords, ...optimized];
     }
     const pending = visits.filter((v: any) =>
       v.visit_status === 'assigned' &&
@@ -327,7 +328,8 @@ const VisitsPage: React.FC = () => {
     const optimized = currentLocation && dayStarted
       ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, others)
       : others;
-    return role === 'team_lead' ? [...periodPending, ...sortedOverdue, ...optimized] : [...sortedOverdue, ...optimized];
+    const teamLeadPeriod = periodPending.filter((v: any) => v.target_latitude && v.target_longitude);
+    return role === 'team_lead' ? [...teamLeadPeriod, ...sortedOverdue, ...optimized] : [...sortedOverdue, ...optimized];
   }, [visits, currentLocation, dayStarted, role, periodPending]);
 
   // Future scheduled visits (legacy only)
@@ -405,6 +407,27 @@ const VisitsPage: React.FC = () => {
       });
     }
   }, [todayPunch, user]);
+
+  // Realtime: live-update visits/shops/assignments across dashboards.
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel('visits-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['visits'] });
+        queryClient.invalidateQueries({ queryKey: ['my-month-visits'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shops' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['shops'] });
+        queryClient.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_assignments' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['shop-assignments'] });
+        queryClient.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user, queryClient]);
 
   const handleStartDay = useCallback(async () => {
     // Once-per-workday guard: if a punch already exists in this 5 AM window, refuse.
@@ -564,15 +587,33 @@ const VisitsPage: React.FC = () => {
         photoUrl = path;
       }
 
-      const distance = getDistanceMeters(
-        coords.lat, coords.lng,
-        (visit as any).target_latitude!, (visit as any).target_longitude!
-      );
+      const hasTargetCoords = !!(visit as any).target_latitude && !!(visit as any).target_longitude;
+      const distance = hasTargetCoords
+        ? getDistanceMeters(
+            coords.lat, coords.lng,
+            (visit as any).target_latitude!, (visit as any).target_longitude!
+          )
+        : 0;
 
-      const isVerified = distance <= GPS_THRESHOLD_METERS;
+      // First-ever visit (shop has no coords yet) → auto-verify and pin.
+      const isFirstPin = !hasTargetCoords;
+      const isVerified = isFirstPin || distance <= GPS_THRESHOLD_METERS;
       const now = new Date().toISOString();
       const startedAt = checkInOpenedAtRef.current || now;
       const finalDiscount = orderReceived && orderItems.length > 0 ? discountPercent : 0;
+
+      // Save the captured coordinates as the shop's permanent location on first visit.
+      if (isFirstPin && (visit as any).shop_id) {
+        const { error: pinErr } = await supabase.rpc('set_shop_coords_if_unset', {
+          _shop_id: (visit as any).shop_id,
+          _lat: coords.lat,
+          _lng: coords.lng,
+        });
+        if (pinErr) {
+          // Non-fatal — visit still records actual coords; lead can re-pin later.
+          console.warn('Could not pin shop coordinates:', pinErr.message);
+        }
+      }
 
       let actualVisitId = visitId;
       if (isSynthetic) {
@@ -580,8 +621,8 @@ const VisitsPage: React.FC = () => {
         const { data: inserted, error: insErr } = await supabase.from('visits').insert({
           customer_name: v.customer_name,
           location_name: v.location_name,
-          target_latitude: v.target_latitude,
-          target_longitude: v.target_longitude,
+          target_latitude: hasTargetCoords ? v.target_latitude : coords.lat,
+          target_longitude: hasTargetCoords ? v.target_longitude : coords.lng,
           assigned_to: user!.id,
           assigned_by: user!.id,
           checked_in_at: startedAt,
@@ -614,8 +655,8 @@ const VisitsPage: React.FC = () => {
         if (error) throw error;
       }
 
-      // Out-of-radius attempt → log so Team Lead gets a notification
-      if (!isVerified) {
+      // Out-of-radius attempt → log so Team Lead gets a notification (skip first-pin)
+      if (!isVerified && hasTargetCoords) {
         try {
           await supabase.from('failed_check_in_attempts').insert({
             user_id: user!.id,
@@ -658,12 +699,16 @@ const VisitsPage: React.FC = () => {
         });
       } catch { /* never block check-in on logging */ }
 
-      return { isVerified, distance: Math.round(distance) };
+      return { isVerified, distance: Math.round(distance), isFirstPin };
     },
     onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
       queryClient.invalidateQueries({ queryKey: ['my-month-visits'] });
-      if (result.isVerified) {
+      queryClient.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      queryClient.invalidateQueries({ queryKey: ['shops'] });
+      if (result.isFirstPin) {
+        toast({ title: '📍 Shop Pinned!', description: 'Location saved. Future visits will verify against these coordinates.' });
+      } else if (result.isVerified) {
         toast({ title: '✅ Visit Verified!', description: `Within ${result.distance}m of target.` });
       } else {
         toast({
@@ -858,17 +903,17 @@ const VisitsPage: React.FC = () => {
             const hasTargetCoords = !!v.target_latitude && !!v.target_longitude;
             const showMap = v.visit_status === 'assigned' && v.assigned_to === user?.id && hasTargetCoords;
             const showEditOrder = v.visit_status === 'verified' && (role === 'salesperson' || (role === 'team_lead' && v.assigned_to === user?.id)) && ((v as any).order_approval_status || 'pending') !== 'approved';
-            const showCheckInSales = v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming && hasTargetCoords;
-            const showCheckInLead = v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming && hasTargetCoords;
+            const showCheckInSales = v.visit_status === 'assigned' && role === 'salesperson' && !isUpcoming;
+            const showCheckInLead = v.visit_status === 'assigned' && role === 'team_lead' && v.assigned_to === user?.id && !isUpcoming;
             const showCheckOut = (v.visit_status === 'verified' || v.visit_status === 'checked_in') && !v.checked_out_at;
-            const showNoCoords = v.visit_status === 'assigned' && v.assigned_to === user?.id && !hasTargetCoords;
-            const hasAny = showView || showMap || showEditOrder || showCheckInSales || showCheckInLead || showCheckOut || showNoCoords;
+            const showFirstPinHint = v.visit_status === 'assigned' && v.assigned_to === user?.id && !hasTargetCoords;
+            const hasAny = showView || showMap || showEditOrder || showCheckInSales || showCheckInLead || showCheckOut || showFirstPinHint;
             if (!hasAny) return null;
             return (
               <div className="flex gap-2 flex-wrap pt-1 border-t border-border/50">
-                {showNoCoords && (
-                  <div className="w-full text-xs text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
-                    Coordinates missing. Ask your Team Lead to refresh this shop before check-in.
+                {showFirstPinHint && (
+                  <div className="w-full text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
+                    📍 First visit — your current location will be saved as this shop's permanent coordinates.
                   </div>
                 )}
                 {showView && (
