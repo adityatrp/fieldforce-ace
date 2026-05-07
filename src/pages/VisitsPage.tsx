@@ -566,15 +566,33 @@ const VisitsPage: React.FC = () => {
         photoUrl = path;
       }
 
-      const distance = getDistanceMeters(
-        coords.lat, coords.lng,
-        (visit as any).target_latitude!, (visit as any).target_longitude!
-      );
+      const hasTargetCoords = !!(visit as any).target_latitude && !!(visit as any).target_longitude;
+      const distance = hasTargetCoords
+        ? getDistanceMeters(
+            coords.lat, coords.lng,
+            (visit as any).target_latitude!, (visit as any).target_longitude!
+          )
+        : 0;
 
-      const isVerified = distance <= GPS_THRESHOLD_METERS;
+      // First-ever visit (shop has no coords yet) → auto-verify and pin.
+      const isFirstPin = !hasTargetCoords;
+      const isVerified = isFirstPin || distance <= GPS_THRESHOLD_METERS;
       const now = new Date().toISOString();
       const startedAt = checkInOpenedAtRef.current || now;
       const finalDiscount = orderReceived && orderItems.length > 0 ? discountPercent : 0;
+
+      // Save the captured coordinates as the shop's permanent location on first visit.
+      if (isFirstPin && (visit as any).shop_id) {
+        const { error: pinErr } = await supabase.rpc('set_shop_coords_if_unset', {
+          _shop_id: (visit as any).shop_id,
+          _lat: coords.lat,
+          _lng: coords.lng,
+        });
+        if (pinErr) {
+          // Non-fatal — visit still records actual coords; lead can re-pin later.
+          console.warn('Could not pin shop coordinates:', pinErr.message);
+        }
+      }
 
       let actualVisitId = visitId;
       if (isSynthetic) {
@@ -582,8 +600,8 @@ const VisitsPage: React.FC = () => {
         const { data: inserted, error: insErr } = await supabase.from('visits').insert({
           customer_name: v.customer_name,
           location_name: v.location_name,
-          target_latitude: v.target_latitude,
-          target_longitude: v.target_longitude,
+          target_latitude: hasTargetCoords ? v.target_latitude : coords.lat,
+          target_longitude: hasTargetCoords ? v.target_longitude : coords.lng,
           assigned_to: user!.id,
           assigned_by: user!.id,
           checked_in_at: startedAt,
@@ -616,8 +634,8 @@ const VisitsPage: React.FC = () => {
         if (error) throw error;
       }
 
-      // Out-of-radius attempt → log so Team Lead gets a notification
-      if (!isVerified) {
+      // Out-of-radius attempt → log so Team Lead gets a notification (skip first-pin)
+      if (!isVerified && hasTargetCoords) {
         try {
           await supabase.from('failed_check_in_attempts').insert({
             user_id: user!.id,
