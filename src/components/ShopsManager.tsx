@@ -202,8 +202,7 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
         );
       }
 
-      const failed = geos.filter(g => !g).length;
-      return { attempted: unique.length, inserted, errors, failed };
+      return { attempted: unique.length, inserted, errors };
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['shops'] });
@@ -211,8 +210,7 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
       toast({
         title: partial ? 'Upload partially complete' : 'Upload complete',
         description:
-          `${res.inserted} of ${res.attempted} shop${res.attempted === 1 ? '' : 's'} saved.` +
-          (res.failed ? ` ${res.failed} address(es) couldn't be geocoded.` : '') +
+          `${res.inserted} of ${res.attempted} shop${res.attempted === 1 ? '' : 's'} saved. Coordinates will be captured on first verified visit.` +
           (res.errors.length ? ` Errors: ${res.errors.slice(0, 2).join('; ')}` : ''),
         variant: partial ? 'destructive' : 'default',
       });
