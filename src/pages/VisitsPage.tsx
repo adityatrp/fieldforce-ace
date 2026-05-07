@@ -308,13 +308,14 @@ const VisitsPage: React.FC = () => {
   const pendingVisits = useMemo(() => {
     const now = Date.now();
     if (role === 'salesperson') {
-      // Period-based items only — no due_date, no schedule.
       const items = periodPending;
-      const optimized = currentLocation && dayStarted
-        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, items.filter((v: any) => v.target_latitude && v.target_longitude))
-        : items;
+      const withCoords = items.filter((v: any) => v.target_latitude && v.target_longitude);
       const withoutCoords = items.filter((v: any) => !v.target_latitude || !v.target_longitude);
-      return currentLocation && dayStarted ? [...optimized, ...withoutCoords] : optimized;
+      const optimized = currentLocation && dayStarted
+        ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, withCoords)
+        : withCoords;
+      // First-visit shops (no coords yet) appear first so salesperson can pin them.
+      return [...withoutCoords, ...optimized];
     }
     const pending = visits.filter((v: any) =>
       v.visit_status === 'assigned' &&
@@ -327,7 +328,8 @@ const VisitsPage: React.FC = () => {
     const optimized = currentLocation && dayStarted
       ? optimizeVisitOrder(currentLocation.lat, currentLocation.lng, others)
       : others;
-    return role === 'team_lead' ? [...periodPending, ...sortedOverdue, ...optimized] : [...sortedOverdue, ...optimized];
+    const teamLeadPeriod = periodPending.filter((v: any) => v.target_latitude && v.target_longitude);
+    return role === 'team_lead' ? [...teamLeadPeriod, ...sortedOverdue, ...optimized] : [...sortedOverdue, ...optimized];
   }, [visits, currentLocation, dayStarted, role, periodPending]);
 
   // Future scheduled visits (legacy only)
