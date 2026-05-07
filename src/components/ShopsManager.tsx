@@ -169,24 +169,20 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
         .select('id');
       if (wipeErr) throw new Error(`Could not clear existing shops: ${wipeErr.message}`);
 
-      setUploadProgress({ done: 0, total: unique.length });
+      setUploadProgress({ done: unique.length, total: unique.length });
 
-      // Parallel batch geocode (Photon + Nominatim fallback, 6 concurrent)
-      const geos = await geocodeBatch(
-        unique.map(r => r.address),
-        (done, total) => setUploadProgress({ done, total })
-      );
-
-      const records = unique.map((r, i) => ({
+      // No geocoding on upload — coordinates are captured on the salesperson's
+      // first verified visit and stored as the shop's permanent location.
+      const records = unique.map((r) => ({
         team_id: teamId,
         name: r.name,
         address: r.address,
         contact_person: r.contact_person,
         phone: r.phone,
-        latitude: geos[i]?.lat ?? null,
-        longitude: geos[i]?.lng ?? null,
-        geocode_status: geos[i] ? 'ok' : 'failed',
-        geocode_error: geos[i] ? '' : 'No match found',
+        latitude: null,
+        longitude: null,
+        geocode_status: 'pending',
+        geocode_error: '',
         created_by: user!.id,
       }));
 
