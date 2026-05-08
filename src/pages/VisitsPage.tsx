@@ -152,6 +152,7 @@ const VisitsPage: React.FC = () => {
   const [productSearch, setProductSearch] = useState('');
   const [discountPercent, setDiscountPercent] = useState(0);
   const [mainCameraOpen, setMainCameraOpen] = useState(false);
+  const [shopSearch, setShopSearch] = useState('');
 
   // Edit-order dialog state
   const [editOrderDialog, setEditOrderDialog] = useState<string | null>(null);
@@ -1105,18 +1106,38 @@ const VisitsPage: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {/* Pending visits (optimized) */}
-          {pendingVisits.length > 0 && (
+          {pendingVisits.length > 0 && (() => {
+            const q = shopSearch.trim().toLowerCase();
+            const filtered = q
+              ? pendingVisits.filter((v: any) =>
+                  (v.customer_name || '').toLowerCase().includes(q) ||
+                  (v.location_name || '').toLowerCase().includes(q)
+                )
+              : pendingVisits;
+            return (
             <div className="space-y-2">
               <div className="flex items-center gap-2 px-1">
                 <Clock className="h-4 w-4 text-warning" />
                 <h3 className="text-sm font-semibold">Pending Visits</h3>
                 {dayStarted && <span className="text-[10px] text-muted-foreground ml-auto">Sorted by nearest</span>}
               </div>
+              <div className="relative">
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={shopSearch}
+                  onChange={(e) => setShopSearch(e.target.value)}
+                  placeholder="Search shops by name or address..."
+                  className="pl-9 h-10 rounded-xl"
+                />
+              </div>
               <div className="space-y-2">
-                {pendingVisits.map(renderVisitCard)}
+                {filtered.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">No shops match "{shopSearch}"</p>
+                ) : filtered.map(renderVisitCard)}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* Upcoming scheduled visits */}
           {upcomingVisits.length > 0 && (
