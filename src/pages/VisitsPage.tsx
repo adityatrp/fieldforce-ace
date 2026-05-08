@@ -152,6 +152,7 @@ const VisitsPage: React.FC = () => {
   const [productSearch, setProductSearch] = useState('');
   const [discountPercent, setDiscountPercent] = useState(0);
   const [mainCameraOpen, setMainCameraOpen] = useState(false);
+  const [shopSearch, setShopSearch] = useState('');
 
   // Edit-order dialog state
   const [editOrderDialog, setEditOrderDialog] = useState<string | null>(null);
