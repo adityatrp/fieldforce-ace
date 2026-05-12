@@ -11,8 +11,9 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, Store, MapPin, RefreshCw, Loader2, AlertTriangle, FileSpreadsheet, UserCheck, Search, Save } from 'lucide-react';
+import { Upload, Store, MapPin, RefreshCw, Loader2, AlertTriangle, FileSpreadsheet, UserCheck, Search, Save, Trash2 } from 'lucide-react';
 import { geocodeAddress, geocodeBatch } from '@/lib/geocode';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 type Shop = {
   id: string;
@@ -57,6 +58,10 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [search, setSearch] = useState('');
   const [drafts, setDrafts] = useState<Record<string, AssignmentDraft>>({});
+  const [uploadAssignTo, setUploadAssignTo] = useState<string>('');
+  const [uploadVisitsPerMonth, setUploadVisitsPerMonth] = useState<number>(1);
+  const [pendingDelete, setPendingDelete] = useState<Shop | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const { data: shops = [] } = useQuery({
     queryKey: ['shops', teamId],
@@ -112,6 +117,10 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       if (!teamId) throw new Error('No team selected.');
+      if (!uploadAssignTo) throw new Error('Please select a salesperson.');
+      if (!uploadVisitsPerMonth || uploadVisitsPerMonth < 1 || uploadVisitsPerMonth > 5) {
+        throw new Error('Please select a valid visit frequency.');
+      }
 
       // ---- File checks ----
       const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -160,20 +169,18 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
         return true;
       });
 
-      // Wipe existing shops for this team (and verify it ran under RLS)
-      const { error: wipeErr } = await supabase
-        .from('shops')
-        .update({ active: false })
-        .eq('team_id', teamId)
-        .eq('active', true)
-        .select('id');
-      if (wipeErr) throw new Error(`Could not clear existing shops: ${wipeErr.message}`);
+      // Skip shops that already exist for this team (case-insensitive name match)
+      const existingNames = new Set(shops.map(s => s.name.trim().toLowerCase()));
+      const toInsert = unique.filter(r => !existingNames.has(r.name.toLowerCase()));
+      const skipped = unique.length - toInsert.length;
 
-      setUploadProgress({ done: unique.length, total: unique.length });
+      if (toInsert.length === 0) {
+        return { attempted: unique.length, inserted: 0, assigned: 0, skipped, errors: [] as string[] };
+      }
 
-      // No geocoding on upload — coordinates are captured on the salesperson's
-      // first verified visit and stored as the shop's permanent location.
-      const records = unique.map((r) => ({
+      setUploadProgress({ done: toInsert.length, total: toInsert.length });
+
+      const records = toInsert.map((r) => ({
         team_id: teamId,
         name: r.name,
         address: r.address,
@@ -187,40 +194,86 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
       }));
 
       const errors: string[] = [];
-      let inserted = 0;
+      const insertedIds: string[] = [];
       for (let i = 0; i < records.length; i += 200) {
         const chunk = records.slice(i, i + 200);
         const { data, error } = await supabase.from('shops').insert(chunk).select('id');
         if (error) errors.push(error.message);
-        inserted += data?.length ?? 0;
+        if (data) insertedIds.push(...data.map(d => d.id));
       }
 
-      if (inserted === 0) {
+      if (insertedIds.length === 0) {
         throw new Error(
           errors[0] ||
           'No shops were saved. You may not have permission to add shops to this team.'
         );
       }
 
-      return { attempted: unique.length, inserted, errors };
+      // Assign all newly inserted shops to selected salesperson
+      const assignRows = insertedIds.map(shop_id => ({
+        shop_id,
+        assigned_to: uploadAssignTo,
+        assigned_by: user!.id,
+        visits_per_month: uploadVisitsPerMonth,
+        active: true,
+      }));
+      let assigned = 0;
+      for (let i = 0; i < assignRows.length; i += 200) {
+        const chunk = assignRows.slice(i, i + 200);
+        const { data, error } = await supabase.from('shop_assignments').insert(chunk).select('id');
+        if (error) errors.push(error.message);
+        assigned += data?.length ?? 0;
+      }
+
+      return { attempted: unique.length, inserted: insertedIds.length, assigned, skipped, errors };
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['shops'] });
-      const partial = res.inserted < res.attempted;
+      qc.invalidateQueries({ queryKey: ['shop-assignments'] });
+      qc.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      const partial = res.inserted < (res.attempted - res.skipped);
       toast({
-        title: partial ? 'Upload partially complete' : 'Upload complete',
+        title: res.inserted === 0 ? 'No new shops to add' : (partial ? 'Upload partially complete' : 'Upload complete'),
         description:
-          `${res.inserted} of ${res.attempted} shop${res.attempted === 1 ? '' : 's'} saved. Coordinates will be captured on first verified visit.` +
-          (res.errors.length ? ` Errors: ${res.errors.slice(0, 2).join('; ')}` : ''),
+          `${res.inserted} new shop${res.inserted === 1 ? '' : 's'} added & assigned` +
+          (res.skipped ? ` · ${res.skipped} already existed (skipped)` : '') +
+          (res.errors.length ? ` · Errors: ${res.errors.slice(0, 2).join('; ')}` : ''),
         variant: partial ? 'destructive' : 'default',
       });
       setUploadOpen(false);
       setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     },
     onError: (e: any) => {
       toast({ title: 'Upload failed', description: e.message, variant: 'destructive' });
       setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     },
+  });
+
+  const deleteShop = useMutation({
+    mutationFn: async (shop: Shop) => {
+      // Soft-delete: deactivate shop + its active assignments. Preserves visit history.
+      const { error: aErr } = await supabase
+        .from('shop_assignments')
+        .update({ active: false })
+        .eq('shop_id', shop.id)
+        .eq('active', true);
+      if (aErr) throw aErr;
+      const { error } = await supabase
+        .from('shops')
+        .update({ active: false })
+        .eq('id', shop.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['shops'] });
+      qc.invalidateQueries({ queryKey: ['shop-assignments'] });
+      qc.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      toast({ title: 'Shop deleted' });
+      setPendingDelete(null);
+    },
+    onError: (e: any) => toast({ title: 'Delete failed', description: e.message, variant: 'destructive' }),
   });
 
   const reGeocode = useMutation({
@@ -346,9 +399,14 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                       </p>
                     )}
                   </div>
-                  <Button size="sm" variant="ghost" disabled={reGeocode.isPending} onClick={() => reGeocode.mutate(shop)} className="shrink-0 h-8 px-2">
-                    <RefreshCw className={`h-3.5 w-3.5 ${reGeocode.isPending ? 'animate-spin' : ''}`} />
-                  </Button>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" disabled={reGeocode.isPending} onClick={() => reGeocode.mutate(shop)} className="h-8 px-2">
+                      <RefreshCw className={`h-3.5 w-3.5 ${reGeocode.isPending ? 'animate-spin' : ''}`} />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setPendingDelete(shop)} className="h-8 px-2 text-destructive hover:text-destructive">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/50">
@@ -411,35 +469,91 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
         })
       )}
 
-      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+      <Dialog open={uploadOpen} onOpenChange={(o) => { setUploadOpen(o); if (!o && fileInputRef.current) fileInputRef.current.value = ''; }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Upload shops from Excel</DialogTitle></DialogHeader>
           <div className="space-y-3 text-sm">
             <p className="text-muted-foreground">
               Required columns: <strong>Shop Name</strong>, <strong>Address</strong>. Optional: Contact Person, Phone.
-              <strong>Note:</strong> This will replace all existing shops for this team.
+              All shops in the file will be assigned to the salesperson below. Existing shops (matched by name) are kept as-is and skipped — nothing is overwritten.
             </p>
-            <Input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              disabled={uploadMutation.isPending}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadMutation.mutate(f);
-              }}
-            />
+
+            <div className="space-y-1">
+              <Label className="text-xs">Assign to salesperson</Label>
+              <Select value={uploadAssignTo} onValueChange={setUploadAssignTo}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select salesperson" /></SelectTrigger>
+                <SelectContent>
+                  {salespersons.map(sp => (
+                    <SelectItem key={sp.user_id} value={sp.user_id}>
+                      {sp.full_name || sp.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Visit frequency</Label>
+              <Select value={String(uploadVisitsPerMonth)} onValueChange={(v) => setUploadVisitsPerMonth(parseInt(v, 10))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <SelectItem key={n} value={String(n)}>{n}× / month</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Shops file</Label>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                disabled={uploadMutation.isPending || !uploadAssignTo}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadMutation.mutate(f);
+                }}
+              />
+              {!uploadAssignTo && (
+                <p className="text-[11px] text-muted-foreground">Select a salesperson first to enable upload.</p>
+              )}
+            </div>
+
             {uploadProgress && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Geocoding {uploadProgress.done} / {uploadProgress.total}...
+                Saving {uploadProgress.done} / {uploadProgress.total}...
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Max 5 MB · up to 2000 rows. Geocoding runs in parallel — usually under a minute for 100 shops.
+              Max 5 MB · up to 2000 rows. Coordinates are captured on the salesperson's first verified visit.
             </p>
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => { if (!o) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this shop?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{pendingDelete?.name}</strong> will be removed from the shop list and any active assignment will be cancelled. Past visit history is preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteShop.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteShop.isPending}
+              onClick={(e) => { e.preventDefault(); if (pendingDelete) deleteShop.mutate(pendingDelete); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteShop.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
