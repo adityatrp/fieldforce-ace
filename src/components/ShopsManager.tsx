@@ -399,9 +399,14 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
                       </p>
                     )}
                   </div>
-                  <Button size="sm" variant="ghost" disabled={reGeocode.isPending} onClick={() => reGeocode.mutate(shop)} className="shrink-0 h-8 px-2">
-                    <RefreshCw className={`h-3.5 w-3.5 ${reGeocode.isPending ? 'animate-spin' : ''}`} />
-                  </Button>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" disabled={reGeocode.isPending} onClick={() => reGeocode.mutate(shop)} className="h-8 px-2">
+                      <RefreshCw className={`h-3.5 w-3.5 ${reGeocode.isPending ? 'animate-spin' : ''}`} />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setPendingDelete(shop)} className="h-8 px-2 text-destructive hover:text-destructive">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/50">
