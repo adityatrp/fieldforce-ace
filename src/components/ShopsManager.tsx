@@ -117,6 +117,10 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       if (!teamId) throw new Error('No team selected.');
+      if (!uploadAssignTo) throw new Error('Please select a salesperson.');
+      if (!uploadVisitsPerMonth || uploadVisitsPerMonth < 1 || uploadVisitsPerMonth > 5) {
+        throw new Error('Please select a valid visit frequency.');
+      }
 
       // ---- File checks ----
       const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -165,20 +169,18 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
         return true;
       });
 
-      // Wipe existing shops for this team (and verify it ran under RLS)
-      const { error: wipeErr } = await supabase
-        .from('shops')
-        .update({ active: false })
-        .eq('team_id', teamId)
-        .eq('active', true)
-        .select('id');
-      if (wipeErr) throw new Error(`Could not clear existing shops: ${wipeErr.message}`);
+      // Skip shops that already exist for this team (case-insensitive name match)
+      const existingNames = new Set(shops.map(s => s.name.trim().toLowerCase()));
+      const toInsert = unique.filter(r => !existingNames.has(r.name.toLowerCase()));
+      const skipped = unique.length - toInsert.length;
 
-      setUploadProgress({ done: unique.length, total: unique.length });
+      if (toInsert.length === 0) {
+        return { attempted: unique.length, inserted: 0, assigned: 0, skipped, errors: [] as string[] };
+      }
 
-      // No geocoding on upload — coordinates are captured on the salesperson's
-      // first verified visit and stored as the shop's permanent location.
-      const records = unique.map((r) => ({
+      setUploadProgress({ done: toInsert.length, total: toInsert.length });
+
+      const records = toInsert.map((r) => ({
         team_id: teamId,
         name: r.name,
         address: r.address,
@@ -192,40 +194,86 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
       }));
 
       const errors: string[] = [];
-      let inserted = 0;
+      const insertedIds: string[] = [];
       for (let i = 0; i < records.length; i += 200) {
         const chunk = records.slice(i, i + 200);
         const { data, error } = await supabase.from('shops').insert(chunk).select('id');
         if (error) errors.push(error.message);
-        inserted += data?.length ?? 0;
+        if (data) insertedIds.push(...data.map(d => d.id));
       }
 
-      if (inserted === 0) {
+      if (insertedIds.length === 0) {
         throw new Error(
           errors[0] ||
           'No shops were saved. You may not have permission to add shops to this team.'
         );
       }
 
-      return { attempted: unique.length, inserted, errors };
+      // Assign all newly inserted shops to selected salesperson
+      const assignRows = insertedIds.map(shop_id => ({
+        shop_id,
+        assigned_to: uploadAssignTo,
+        assigned_by: user!.id,
+        visits_per_month: uploadVisitsPerMonth,
+        active: true,
+      }));
+      let assigned = 0;
+      for (let i = 0; i < assignRows.length; i += 200) {
+        const chunk = assignRows.slice(i, i + 200);
+        const { data, error } = await supabase.from('shop_assignments').insert(chunk).select('id');
+        if (error) errors.push(error.message);
+        assigned += data?.length ?? 0;
+      }
+
+      return { attempted: unique.length, inserted: insertedIds.length, assigned, skipped, errors };
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['shops'] });
-      const partial = res.inserted < res.attempted;
+      qc.invalidateQueries({ queryKey: ['shop-assignments'] });
+      qc.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      const partial = res.inserted < (res.attempted - res.skipped);
       toast({
-        title: partial ? 'Upload partially complete' : 'Upload complete',
+        title: res.inserted === 0 ? 'No new shops to add' : (partial ? 'Upload partially complete' : 'Upload complete'),
         description:
-          `${res.inserted} of ${res.attempted} shop${res.attempted === 1 ? '' : 's'} saved. Coordinates will be captured on first verified visit.` +
-          (res.errors.length ? ` Errors: ${res.errors.slice(0, 2).join('; ')}` : ''),
+          `${res.inserted} new shop${res.inserted === 1 ? '' : 's'} added & assigned` +
+          (res.skipped ? ` · ${res.skipped} already existed (skipped)` : '') +
+          (res.errors.length ? ` · Errors: ${res.errors.slice(0, 2).join('; ')}` : ''),
         variant: partial ? 'destructive' : 'default',
       });
       setUploadOpen(false);
       setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     },
     onError: (e: any) => {
       toast({ title: 'Upload failed', description: e.message, variant: 'destructive' });
       setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     },
+  });
+
+  const deleteShop = useMutation({
+    mutationFn: async (shop: Shop) => {
+      // Soft-delete: deactivate shop + its active assignments. Preserves visit history.
+      const { error: aErr } = await supabase
+        .from('shop_assignments')
+        .update({ active: false })
+        .eq('shop_id', shop.id)
+        .eq('active', true);
+      if (aErr) throw aErr;
+      const { error } = await supabase
+        .from('shops')
+        .update({ active: false })
+        .eq('id', shop.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['shops'] });
+      qc.invalidateQueries({ queryKey: ['shop-assignments'] });
+      qc.invalidateQueries({ queryKey: ['my-shop-assignments'] });
+      toast({ title: 'Shop deleted' });
+      setPendingDelete(null);
+    },
+    onError: (e: any) => toast({ title: 'Delete failed', description: e.message, variant: 'destructive' }),
   });
 
   const reGeocode = useMutation({
