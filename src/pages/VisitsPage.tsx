@@ -1105,6 +1105,19 @@ const VisitsPage: React.FC = () => {
         </Card>
       ) : (
         <div className="space-y-4">
+          {/* Always-visible shop search (works whether punched in or not) */}
+          {(role === 'salesperson' || role === 'team_lead') && (
+            <div className="relative">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={shopSearch}
+                onChange={(e) => setShopSearch(e.target.value)}
+                placeholder="Search shops by name or address..."
+                className="pl-9 h-10 rounded-xl"
+              />
+            </div>
+          )}
+
           {/* Pending visits (optimized) */}
           {pendingVisits.length > 0 && (() => {
             const q = shopSearch.trim().toLowerCase();
@@ -1120,15 +1133,6 @@ const VisitsPage: React.FC = () => {
                 <Clock className="h-4 w-4 text-warning" />
                 <h3 className="text-sm font-semibold">Pending Visits</h3>
                 {dayStarted && <span className="text-[10px] text-muted-foreground ml-auto">Sorted by nearest</span>}
-              </div>
-              <div className="relative">
-                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={shopSearch}
-                  onChange={(e) => setShopSearch(e.target.value)}
-                  placeholder="Search shops by name or address..."
-                  className="pl-9 h-10 rounded-xl"
-                />
               </div>
               <div className="space-y-2">
                 {filtered.length === 0 ? (
