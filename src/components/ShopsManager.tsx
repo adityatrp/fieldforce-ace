@@ -469,35 +469,91 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
         })
       )}
 
-      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+      <Dialog open={uploadOpen} onOpenChange={(o) => { setUploadOpen(o); if (!o && fileInputRef.current) fileInputRef.current.value = ''; }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Upload shops from Excel</DialogTitle></DialogHeader>
           <div className="space-y-3 text-sm">
             <p className="text-muted-foreground">
               Required columns: <strong>Shop Name</strong>, <strong>Address</strong>. Optional: Contact Person, Phone.
-              <strong>Note:</strong> This will replace all existing shops for this team.
+              All shops in the file will be assigned to the salesperson below. Existing shops (matched by name) are kept as-is and skipped — nothing is overwritten.
             </p>
-            <Input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              disabled={uploadMutation.isPending}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadMutation.mutate(f);
-              }}
-            />
+
+            <div className="space-y-1">
+              <Label className="text-xs">Assign to salesperson</Label>
+              <Select value={uploadAssignTo} onValueChange={setUploadAssignTo}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select salesperson" /></SelectTrigger>
+                <SelectContent>
+                  {salespersons.map(sp => (
+                    <SelectItem key={sp.user_id} value={sp.user_id}>
+                      {sp.full_name || sp.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Visit frequency</Label>
+              <Select value={String(uploadVisitsPerMonth)} onValueChange={(v) => setUploadVisitsPerMonth(parseInt(v, 10))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <SelectItem key={n} value={String(n)}>{n}× / month</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Shops file</Label>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                disabled={uploadMutation.isPending || !uploadAssignTo}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadMutation.mutate(f);
+                }}
+              />
+              {!uploadAssignTo && (
+                <p className="text-[11px] text-muted-foreground">Select a salesperson first to enable upload.</p>
+              )}
+            </div>
+
             {uploadProgress && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Geocoding {uploadProgress.done} / {uploadProgress.total}...
+                Saving {uploadProgress.done} / {uploadProgress.total}...
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Max 5 MB · up to 2000 rows. Geocoding runs in parallel — usually under a minute for 100 shops.
+              Max 5 MB · up to 2000 rows. Coordinates are captured on the salesperson's first verified visit.
             </p>
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => { if (!o) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this shop?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{pendingDelete?.name}</strong> will be removed from the shop list and any active assignment will be cancelled. Past visit history is preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteShop.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteShop.isPending}
+              onClick={(e) => { e.preventDefault(); if (pendingDelete) deleteShop.mutate(pendingDelete); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteShop.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
