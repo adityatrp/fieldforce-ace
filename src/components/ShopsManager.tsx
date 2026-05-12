@@ -58,6 +58,10 @@ const ShopsManager: React.FC<Props> = ({ teamId, salespersons }) => {
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [search, setSearch] = useState('');
   const [drafts, setDrafts] = useState<Record<string, AssignmentDraft>>({});
+  const [uploadAssignTo, setUploadAssignTo] = useState<string>('');
+  const [uploadVisitsPerMonth, setUploadVisitsPerMonth] = useState<number>(1);
+  const [pendingDelete, setPendingDelete] = useState<Shop | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const { data: shops = [] } = useQuery({
     queryKey: ['shops', teamId],
